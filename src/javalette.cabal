@@ -30,7 +30,11 @@ extra-source-files:
   Javalette.cf
 
 library compiler
-    exposed-modules:  Javalette.Par
+    exposed-modules:
+      TypeChecker
+      FunType
+      Annotated
+      Javalette.Par
     other-modules:
       Javalette.Abs
       Javalette.Lex
@@ -46,6 +50,7 @@ library compiler
       , array      >= 0.5.2.0  && < 0.6
       , containers >= 0.5.11.0 && < 0.8
       , mtl        >= 2.2.2    && < 2.4
+      , transformers
 
     hs-source-dirs:   .
     default-language: Haskell2010

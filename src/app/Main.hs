@@ -5,6 +5,7 @@ import System.Exit        (exitFailure)
 import System.IO.Error    (isUserError, ioeGetErrorString)
 
 import Javalette.Par      (pProg, myLexer)
+import TypeChecker        (typecheck)
 
 
 main :: IO ()
@@ -22,10 +23,11 @@ check s = do
       putStrLn "SYNTAX ERROR"
       putStrLn err
       exitFailure
-    Right tree -> do putStrLn "syntax OK"
-      -- case typecheck tree of
-      --   Left err -> do
-      --     putStrLn "TYPE ERROR"
-      --     putStrLn err
-      --     exitFailure
-      --   Right tree' -> putStrLn "typecheck OK"
+    Right tree -> do
+      putStrLn "syntax OK"
+      case typecheck tree of
+        Left err -> do
+          putStrLn "TYPE ERROR"
+          putStrLn err
+          exitFailure
+        Right tree' -> putStrLn "typecheck OK"
