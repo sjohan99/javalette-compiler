@@ -52,11 +52,11 @@ type Check = ReaderT Sig (StateT St (Except TypeError))
 
 builtin :: [(Ident, FunType)]
 builtin =
-    [ (Ident "readInt"    , FunType Abs.Int  [])
-    , (Ident "readDouble" , FunType Abs.Doub [])
-    , (Ident "printInt"   , FunType Abs.Void [Abs.Int])
-    , (Ident "printDouble", FunType Abs.Doub [Abs.Doub])
-    , (Ident "printString", FunType Abs.Void [Abs.Void])
+    [ (Ident "readInt"    , FunType Int  [])
+    , (Ident "readDouble" , FunType Doub [])
+    , (Ident "printInt"   , FunType Void [Int])
+    , (Ident "printDouble", FunType Doub [Doub])
+    , (Ident "printString", FunType Void [Str])
     ]
 
 typecheck :: Prog -> Either TypeError A.Prog
@@ -64,10 +64,14 @@ typecheck prg@(Program defs) = do
     let sig = builtin ++ sourceFuncs defs
     assertHasMain sig
     assertNoDuplicateFuns sig
+    assertNoStringReturns defs
     let st = error "no state yet"
     runExcept (evalStateT (runReaderT (checkProgram prg) (Map.fromList sig)) st)
     where sourceFuncs = map (\(FnDef t fId args _) -> (fId, FunType t (map (\(Argument t _) -> t) args)))
-          assertHasMain s = unless ((Ident "main", FunType Abs.Int []) `elem` s) $ throwError "no main function"
+          assertHasMain s = unless ((Ident "main", FunType Int []) `elem` s) $ throwError "no main function"
+          assertNoStringReturns defs = do 
+            let strRetFuncs = [id | FnDef t id _ _ <- defs, t == Str]
+            unless (null strRetFuncs) $ throwError $ "function may not return type string: " ++ show (head strRetFuncs)
           assertNoDuplicateFuns s = do
             let duplicates = filter (\x -> length x > 1) $ groupBy (\t1 t2 -> fst t1 == fst t2) $ sort s
             unless (null duplicates) $ throwError $ "duplicate function definition: " ++ show (fst (head $ head duplicates))
@@ -118,12 +122,12 @@ checkStm = \case
 
     Incr id -> do
         t <- lookupVar id
-        unless (t == Abs.Int || t == Abs.Doub) $ throwError $ "Type mismatch. Cannot apply '++' to " ++ show t
+        unless (t == Int || t == Doub) $ throwError $ "Type mismatch. Cannot apply '++' to " ++ show t
         return $ A.Incr t id
 
     Decr id -> do
         t <- lookupVar id
-        unless (t == Abs.Int || t == Abs.Doub) $ throwError $ "Type mismatch. Cannot apply '--' to " ++ show t
+        unless (t == Int || t == Doub) $ throwError $ "Type mismatch. Cannot apply '--' to " ++ show t
         return $ A.Decr t id
 
     Decl t items -> do
@@ -140,25 +144,25 @@ checkStm = \case
 
     VRet -> do
         t <- gets stRet
-        unless (t == Abs.Void) $ throwError "Type mismatch: void return in non-void function"
+        unless (t == Void) $ throwError "Type mismatch: void return in non-void function"
         return A.VRet
 
     Cond e s -> do
         (t, e') <- inferExp e
-        unless (t == Abs.Bool) $ throwError $ "Type mismatch: " ++ printTree e ++ ". Expected boolean, got " ++ show t
+        unless (t == Bool) $ throwError $ "Type mismatch: " ++ printTree e ++ ". Expected boolean, got " ++ show t
         s' <- checkStm $ blockify s
         return $ A.Cond e' s'
 
     CondElse e s1 s2 -> do
         (t, e') <- inferExp e
-        unless (t == Abs.Bool) $ throwError $ "Type mismatch: " ++ printTree e ++ ". Expected boolean, got " ++ show t
+        unless (t == Bool) $ throwError $ "Type mismatch: " ++ printTree e ++ ". Expected boolean, got " ++ show t
         s1' <- checkStm $ blockify s1
         s2' <- checkStm $ blockify s2
         return $ A.CondElse e' s1' s2'
 
     While e s -> do
         (t, e') <- inferExp e
-        unless (t == Abs.Bool) $ throwError $ "Type mismatch: " ++ printTree e ++ ". Expected boolean, got " ++ show t
+        unless (t == Bool) $ throwError $ "Type mismatch: " ++ printTree e ++ ". Expected boolean, got " ++ show t
         s' <- checkStm $ blockify s
         return $ A.While e' s'
 
@@ -182,13 +186,13 @@ inferExp = \case
         t <- lookupVar id
         return (t, A.EVar id)
 
-    ELitInt i    -> return (Abs.Int, A.ELitInt i)
+    ELitInt i    -> return (Int, A.ELitInt i)
 
-    ELitDoub d   -> return (Abs.Doub, A.ELitDoub d)
+    ELitDoub d   -> return (Doub, A.ELitDoub d)
 
-    ELitTrue   -> return (Abs.Bool, A.ELitTrue)
+    ELitTrue   -> return (Bool, A.ELitTrue)
 
-    ELitFalse  -> return (Abs.Bool, A.ELitFalse)
+    ELitFalse  -> return (Bool, A.ELitFalse)
 
     EApp fid es -> do
         sig <- ask
@@ -200,57 +204,57 @@ inferExp = \case
                 return (t, A.EApp fid es')
 
     -- Set type to void, as the BNF does not specify a type for the string literal
-    EString s -> return (Abs.Void, A.EString s)
+    EString s -> return (Str, A.EString s)
 
     Neg e -> do
         (t, e') <- inferExp e
         case t of
-            Abs.Int  -> return (Abs.Int, A.Neg e')
-            Abs.Doub -> return (Abs.Doub, A.Neg e')
+            Int  -> return (Int, A.Neg e')
+            Doub -> return (Doub, A.Neg e')
             _        -> throwError $ "Type mismatch: " ++ printTree e ++ ". Cannot negate (-) to " ++ show t
 
     Not e -> do
         (t, e') <- inferExp e
-        unless (t == Abs.Bool) $ throwError $ "Type mismatch: " ++ printTree e ++ ". Cannot apply '!' to " ++ show t
-        return (Abs.Bool, A.Not e')
+        unless (t == Bool) $ throwError $ "Type mismatch: " ++ printTree e ++ ". Cannot apply '!' to " ++ show t
+        return (Bool, A.Not e')
 
     EMul e1 op e2 -> do
         (t1, e1') <- inferExp e1
         (t2, e2') <- inferExp e2
         case (t1, t2) of
-            (Abs.Int,  Abs.Int)  -> return (Abs.Int, A.EMul Abs.Int e1' op e2')
-            (Abs.Doub, Abs.Doub) -> return (Abs.Doub, A.EMul Abs.Doub e1' op e2')
+            (Int,  Int)  -> return (Int, A.EMul Int e1' op e2')
+            (Doub, Doub) -> return (Doub, A.EMul Doub e1' op e2')
             _                    -> throwError $ "Type mismatch: " ++ printTree e1 ++ " " ++ printTree op ++ " " ++ printTree e2 ++ ". Cannot apply '" ++ printTree op ++ "' to " ++ show t1 ++ " and " ++ show t2
 
     EAdd e1 op e2 -> do
         (t1, e1') <- inferExp e1
         (t2, e2') <- inferExp e2
         case (t1, t2) of
-            (Abs.Int,  Abs.Int)  -> return (Abs.Int, A.EAdd Abs.Int e1' op e2')
-            (Abs.Doub, Abs.Doub) -> return (Abs.Doub, A.EAdd Abs.Doub e1' op e2')
+            (Int,  Int)  -> return (Int, A.EAdd Int e1' op e2')
+            (Doub, Doub) -> return (Doub, A.EAdd Doub e1' op e2')
             _                    -> throwError $ "Type mismatch: " ++ printTree e1 ++ " " ++ printTree op ++ " " ++ printTree e2 ++ ". Cannot apply '" ++ printTree op ++ "' to " ++ show t1 ++ " and " ++ show t2
 
     ERel e1 op e2 -> do
         (t1, e1') <- inferExp e1
         (t2, e2') <- inferExp e2
         case (t1, t2) of
-            (Abs.Bool, Abs.Bool) -> return (Abs.Bool, A.ERel Abs.Bool e1' op e2')
-            (Abs.Int, Abs.Int)   -> return (Abs.Bool, A.ERel Abs.Int e1' op e2')
-            (Abs.Doub, Abs.Doub) -> return (Abs.Bool, A.ERel Abs.Doub e1' op e2')
+            (Bool, Bool) -> return (Bool, A.ERel Bool e1' op e2')
+            (Int, Int)   -> return (Bool, A.ERel Int e1' op e2')
+            (Doub, Doub) -> return (Bool, A.ERel Doub e1' op e2')
             _                    -> throwError $ "Type mismatch: " ++ printTree e1 ++ " " ++ printTree op ++ " " ++ printTree e2 ++ ". Cannot apply '" ++ printTree op ++ "' to " ++ show t1 ++ " and " ++ show t2
 
     EAnd e1 e2 -> do
         (t1, e1') <- inferExp e1
         (t2, e2') <- inferExp e2
         case (t1, t2) of
-            (Abs.Bool, Abs.Bool) -> return (Abs.Bool, A.EAnd e1' e2')
+            (Bool, Bool) -> return (Bool, A.EAnd e1' e2')
             _                    -> throwError $ "Type mismatch: " ++ printTree e1 ++ " " ++ printTree e2 ++ ". Cannot apply '&&' to " ++ show t1 ++ " and " ++ show t2
 
     EOr e1 e2 -> do
         (t1, e1') <- inferExp e1
         (t2, e2') <- inferExp e2
         case (t1, t2) of
-            (Abs.Bool, Abs.Bool) -> return (Abs.Bool, A.EOr e1' e2')
+            (Bool, Bool) -> return (Bool, A.EOr e1' e2')
             _                    -> throwError $ "Type mismatch: " ++ printTree e1 ++ " " ++ printTree e2 ++ ". Cannot apply '||' to " ++ show t1 ++ " and " ++ show t2
 
 
@@ -266,11 +270,12 @@ lookupVar x = gets stCxt >>= (\case
     (t:_) -> return t) . mapMaybe (Map.lookup x) . toList
 
 newVar :: Ident -> Type -> Check ()
-newVar x t = if t == Abs.Void then
-    throwError $ "variable void type not allowed: " ++ printTree x
-else do
-    sret <- gets stRet
-    b :| bs <- gets stCxt
-    let (found, b') = Map.insertLookupWithKey (\ _ t _ -> t) x t b
-    unless (isNothing found) $ throwError $ "variable already defined: " ++ printTree x
-    put $ St (b' :| bs) sret
+newVar x t = case t of
+    Void -> throwError $ "variable void type not allowed: " ++ printTree x
+    Str -> throwError $ "variable string type not allowed: " ++ printTree x
+    _ -> do
+        sret <- gets stRet
+        b :| bs <- gets stCxt
+        let (found, b') = Map.insertLookupWithKey (\ _ t _ -> t) x t b
+        unless (isNothing found) $ throwError $ "variable already defined: " ++ printTree x
+        put $ St (b' :| bs) sret
