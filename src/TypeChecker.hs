@@ -78,6 +78,7 @@ typecheck prg@(Program defs) = do
 
 checkProgram :: Prog -> Check A.Prog
 checkProgram (Program defs) = do
+    mapM_ checkReturn defs
     defs' <- mapM checkDef defs
     return (A.Program defs')
 
@@ -87,6 +88,20 @@ checkDef (FnDef t fId args ss) = do
     mapM_ (\(Argument t x) -> newVar x t) args
     ss' <- checkStms ss
     return $ A.FnDef t fId args (A.Block ss')
+
+checkReturn :: TopDef -> Check ()
+checkReturn (FnDef Void fId _ ss) = return ()
+checkReturn (FnDef t fId _ (Block ss)) = if any checkPath ss then
+        return ()
+    else
+        throwError $ "Not every execution path returns in function: " ++ show fId
+
+checkPath :: Stmt -> Bool
+checkPath = \case
+    Ret _ -> True
+    CondElse _ s1 s2 -> checkPath s1 && checkPath s2
+    (BStmt (Block ss)) -> any checkPath ss
+    _ -> False
 
 checkInit :: Type -> [Item] -> Check [A.Item]
 checkInit t = go
@@ -108,9 +123,14 @@ checkInit t = go
 
 checkStm :: Stmt -> Check A.Stmt
 checkStm = \case
+    Empty -> return A.Empty
+
     SExp e -> do
-        (t, e') <- inferExp e
-        return $ A.SExp t e'
+        case e of
+            EApp _ _ -> do
+                (t, e') <- inferExp e
+                return $ A.SExp t e'
+            _ -> throwError $ "Void expressions are not allowed: " ++ printTree e
 
     Ass id e -> do
         (t, e') <- inferExp e
@@ -122,12 +142,12 @@ checkStm = \case
 
     Incr id -> do
         t <- lookupVar id
-        unless (t == Int || t == Doub) $ throwError $ "Type mismatch. Cannot apply '++' to " ++ show t
+        unless (t == Int) $ throwError $ "Type mismatch. Cannot apply '++' to " ++ show t
         return $ A.Incr t id
 
     Decr id -> do
         t <- lookupVar id
-        unless (t == Int || t == Doub) $ throwError $ "Type mismatch. Cannot apply '--' to " ++ show t
+        unless (t == Int) $ throwError $ "Type mismatch. Cannot apply '--' to " ++ show t
         return $ A.Decr t id
 
     Decl t items -> do
@@ -223,7 +243,9 @@ inferExp = \case
         (t2, e2') <- inferExp e2
         case (t1, t2) of
             (Int,  Int)  -> return (Int, A.EMul Int e1' op e2')
-            (Doub, Doub) -> return (Doub, A.EMul Doub e1' op e2')
+            (Doub, Doub) -> do
+                unless (op /= Mod) $ throwError $ "Type mismatch: " ++ printTree e1 ++ " " ++ printTree op ++ " " ++ printTree e2 ++ ". Cannot apply '%' to " ++ show t1 ++ " and " ++ show t2
+                return (Doub, A.EMul Doub e1' op e2')
             _                    -> throwError $ "Type mismatch: " ++ printTree e1 ++ " " ++ printTree op ++ " " ++ printTree e2 ++ ". Cannot apply '" ++ printTree op ++ "' to " ++ show t1 ++ " and " ++ show t2
 
     EAdd e1 op e2 -> do
