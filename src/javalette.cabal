@@ -58,6 +58,14 @@ library compiler
       LambdaCase
       TupleSections
 
+executable debug
+    main-is:          Debug.hs
+    build-depends:
+        base ^>=4.17.2.1,
+        compiler,
+    hs-source-dirs:   app
+    default-language: Haskell2010
+
 executable jlc
     main-is:          Main.hs
     build-depends:

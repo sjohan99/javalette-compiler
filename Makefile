@@ -11,6 +11,9 @@ build : parser
 # temporary solution
 	cd src && cabal build && cp dist-newstyle/build/x86_64-linux/ghc-9.4.8/javalette-0.1/x/jlc/build/jlc/jlc ../
 
+debug : parser
+	cd src && cabal build && cp dist-newstyle/build/x86_64-linux/ghc-9.4.8/javalette-0.1/x/debug/build/debug/debug ../
+
 #run :
 #	./jlc "$(cat src/tmp/helloworld.jl)"
 
