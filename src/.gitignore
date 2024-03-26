@@ -2,7 +2,12 @@
 ## Haskell
 ##############################
 
-Javalette/
+
+Javalette/*
+!Javalette/Abs.hs
+!Javalette/Par.hs
+!Javalette/Lex.hs
+!Javalette/Print.hs
 
 dist
 dist-*
