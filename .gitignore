@@ -1,5 +1,6 @@
+# Exclude executables
 jlc
-debug
+debugjlc
 
 ##############################
 ## Haskell
