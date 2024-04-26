@@ -7,15 +7,12 @@ import qualified Javalette.Abs as Abs
 newtype Prog = Program [TopDef]
   deriving (C.Eq, C.Ord, C.Show, C.Read)
 
-data TopDef = FnDef Abs.Type Abs.Ident [Abs.Arg] Blk
-  deriving (C.Eq, C.Ord, C.Show, C.Read)
-
-newtype Blk = Block [Stmt]
+data TopDef = FnDef Abs.Type Abs.Ident [Abs.Arg] [Stmt]
   deriving (C.Eq, C.Ord, C.Show, C.Read)
 
 data Stmt
     = Empty
-    | BStmt Blk
+    | BStmt [Stmt]
     | Decl Abs.Type [Item]
     | Ass Abs.Type Abs.Ident Expr
     | Incr Abs.Type Abs.Ident

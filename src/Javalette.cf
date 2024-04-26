@@ -4,7 +4,7 @@ entrypoints Prog ;
 
 Program.   Prog ::= [TopDef] ;
 
-FnDef.	   TopDef ::= Type Ident "(" [Arg] ")" Blk ;
+FnDef.	   TopDef ::= Type Ident "(" [Arg] ")" "{" [Stmt] "}" ;
 
 separator nonempty TopDef "" ;
 
@@ -14,13 +14,11 @@ separator  Arg "," ;
 
 -- statements ----------------------------------------------
 
-Block.     Blk ::= "{" [Stmt] "}" ;
-
 separator  Stmt "" ;
 
 Empty.     Stmt ::= ";" ;
 
-BStmt.     Stmt ::= Blk ;
+BStmt.     Stmt ::= "{" [Stmt] "}" ;
 
 Decl.      Stmt ::= Type [Item] ";" ;
 

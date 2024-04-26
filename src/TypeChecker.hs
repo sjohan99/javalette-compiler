@@ -34,7 +34,7 @@ data St = St
     , stRet :: Type
     }
 
-pt :: forall a. Print a => a -> String
+pt :: Print a => a -> String
 pt = printTree
 
 fmt :: [String] -> String
@@ -80,11 +80,11 @@ checkDef (FnDef t fId args ss) = do
     put $ initSt t
     mapM_ (\(Argument t x) -> newVar x t) args
     ss' <- checkStmts ss
-    return $ A.FnDef t fId args (A.Block ss')
+    return $ A.FnDef t fId args ss'
 
 checkReturn :: TopDef -> Check ()
 checkReturn (FnDef Void fId _ ss) = return ()
-checkReturn (FnDef t fId _ (Block ss)) = if any hasReturn ss then
+checkReturn (FnDef t fId _ ss) = if any hasReturn ss then
         return ()
     else
         throwError $ fmt ["Not every execution path returns in function:", pt fId]
@@ -93,7 +93,7 @@ hasReturn :: Stmt -> Bool
 hasReturn = \case
     Ret _ -> True
     CondElse _ s1 s2 -> hasReturn s1 && hasReturn s2
-    (BStmt (Block ss)) -> any hasReturn ss
+    (BStmt ss) -> any hasReturn ss
     _ -> False
 
 checkItems :: Type -> [Item] -> Check [A.Item]
@@ -184,13 +184,13 @@ checkStmt = \case
         put $ St (Map.empty :| toList bs) sret
         ss' <- checkStmts ss
         put $ St bs sret
-        return $ A.BStmt (A.Block ss')
+        return $ A.BStmt ss'
 
     where blockify (BStmt ss) = BStmt ss
-          blockify ss = BStmt (Block [ss])
+          blockify ss = BStmt [ss]
 
-checkStmts :: Blk -> Check [A.Stmt]
-checkStmts (Block ss) = mapM checkStmt ss
+checkStmts :: [Stmt] -> Check [A.Stmt]
+checkStmts ss = mapM checkStmt ss
 
 inferExp :: Expr -> Check (Type, A.Expr)
 inferExp = \case

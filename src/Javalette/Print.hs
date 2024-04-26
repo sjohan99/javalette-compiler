@@ -145,7 +145,7 @@ instance Print Javalette.Abs.Prog where
 
 instance Print Javalette.Abs.TopDef where
   prt i = \case
-    Javalette.Abs.FnDef type_ id_ args blk -> prPrec i 0 (concatD [prt 0 type_, prt 0 id_, doc (showString "("), prt 0 args, doc (showString ")"), prt 0 blk])
+    Javalette.Abs.FnDef type_ id_ args stmts -> prPrec i 0 (concatD [prt 0 type_, prt 0 id_, doc (showString "("), prt 0 args, doc (showString ")"), doc (showString "{"), prt 0 stmts, doc (showString "}")])
 
 instance Print [Javalette.Abs.TopDef] where
   prt _ [] = concatD []
@@ -161,10 +161,6 @@ instance Print [Javalette.Abs.Arg] where
   prt _ [x] = concatD [prt 0 x]
   prt _ (x:xs) = concatD [prt 0 x, doc (showString ","), prt 0 xs]
 
-instance Print Javalette.Abs.Blk where
-  prt i = \case
-    Javalette.Abs.Block stmts -> prPrec i 0 (concatD [doc (showString "{"), prt 0 stmts, doc (showString "}")])
-
 instance Print [Javalette.Abs.Stmt] where
   prt _ [] = concatD []
   prt _ (x:xs) = concatD [prt 0 x, prt 0 xs]
@@ -172,7 +168,7 @@ instance Print [Javalette.Abs.Stmt] where
 instance Print Javalette.Abs.Stmt where
   prt i = \case
     Javalette.Abs.Empty -> prPrec i 0 (concatD [doc (showString ";")])
-    Javalette.Abs.BStmt blk -> prPrec i 0 (concatD [prt 0 blk])
+    Javalette.Abs.BStmt stmts -> prPrec i 0 (concatD [doc (showString "{"), prt 0 stmts, doc (showString "}")])
     Javalette.Abs.Decl type_ items -> prPrec i 0 (concatD [prt 0 type_, prt 0 items, doc (showString ";")])
     Javalette.Abs.Ass id_ expr -> prPrec i 0 (concatD [prt 0 id_, doc (showString "="), prt 0 expr, doc (showString ";")])
     Javalette.Abs.Incr id_ -> prPrec i 0 (concatD [prt 0 id_, doc (showString "++"), doc (showString ";")])

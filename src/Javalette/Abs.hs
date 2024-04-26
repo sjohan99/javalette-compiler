@@ -13,18 +13,15 @@ import qualified Data.String
 data Prog = Program [TopDef]
   deriving (C.Eq, C.Ord, C.Show, C.Read)
 
-data TopDef = FnDef Type Ident [Arg] Blk
+data TopDef = FnDef Type Ident [Arg] [Stmt]
   deriving (C.Eq, C.Ord, C.Show, C.Read)
 
 data Arg = Argument Type Ident
   deriving (C.Eq, C.Ord, C.Show, C.Read)
 
-data Blk = Block [Stmt]
-  deriving (C.Eq, C.Ord, C.Show, C.Read)
-
 data Stmt
     = Empty
-    | BStmt Blk
+    | BStmt [Stmt]
     | Decl Type [Item]
     | Ass Ident Expr
     | Incr Ident
