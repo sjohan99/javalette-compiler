@@ -196,15 +196,15 @@ inferExp :: Expr -> Check (Type, A.Expr)
 inferExp = \case
     EVar id -> do
         t <- lookupVar id
-        return (t, A.EVar id)
+        return (t, A.EVar t id)
 
-    ELitInt i    -> return (Int, A.ELitInt i)
+    ELitInt i    -> return (Int, A.ELitInt Int i)
 
-    ELitDoub d   -> return (Doub, A.ELitDoub d)
+    ELitDoub d   -> return (Doub, A.ELitDoub Doub d)
 
-    ELitTrue   -> return (Bool, A.ELitTrue)
+    ELitTrue   -> return (Bool, A.ELitTrue Bool)
 
-    ELitFalse  -> return (Bool, A.ELitFalse)
+    ELitFalse  -> return (Bool, A.ELitFalse Bool)
 
     EApp fid es -> do
         sig <- ask
@@ -213,21 +213,21 @@ inferExp = \case
             Just (FunType t ts) -> do
                 unless (length ts == length es) $ throwError $ fmt ["function:", pt fid, "expected", show (length ts), "arguments, got", show (length es)]
                 es' <- zipWithM checkExpr es ts
-                return (t, A.EApp fid es')
+                return (t, A.EApp t fid es')
 
-    EString s -> return (Str, A.EString s)
+    EString s -> return (Str, A.EString Str s)
 
     Neg e -> do
         (t, e') <- inferExp e
         case t of
-            Int  -> return (Int, A.Neg e')
-            Doub -> return (Doub, A.Neg e')
+            Int  -> return (Int, A.Neg Int e')
+            Doub -> return (Doub, A.Neg Doub e')
             _        -> throwError $ fmt ["Type mismatch:", pt e, ". Cannot apply negate '-' to type", pt t]
 
     Not e -> do
         (t, e') <- inferExp e
         unless (t == Bool) $ throwError $ fmt ["Type mismatch:", pt e, ". Cannot apply '!' to type", pt t]
-        return (Bool, A.Not e')
+        return (Bool, A.Not Bool e')
 
     EMul e1 op e2 -> do
         (t1, e1') <- inferExp e1
@@ -260,14 +260,14 @@ inferExp = \case
         (t1, e1') <- inferExp e1
         (t2, e2') <- inferExp e2
         case (t1, t2) of
-            (Bool, Bool) -> return (Bool, A.EAnd e1' e2')
+            (Bool, Bool) -> return (Bool, A.EAnd Bool e1' e2')
             _                    -> throwError $ fmt ["Type mismatch:", pt e1, "&&", pt e2, ". Cannot apply && to", pt t1, "and", pt t2]
 
     EOr e1 e2 -> do
         (t1, e1') <- inferExp e1
         (t2, e2') <- inferExp e2
         case (t1, t2) of
-            (Bool, Bool) -> return (Bool, A.EOr e1' e2')
+            (Bool, Bool) -> return (Bool, A.EOr Bool e1' e2')
             _                    -> throwError $ fmt ["Type mismatch:", pt e1, "||", pt e2, ". Cannot apply || to", pt t1, "and", pt t2]
 
 

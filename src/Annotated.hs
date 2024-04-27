@@ -26,20 +26,20 @@ data Stmt
   deriving (C.Eq, C.Ord, C.Show, C.Read)
 
 data Expr
-    = EVar Abs.Ident
-    | ELitInt C.Integer
-    | ELitDoub C.Double
-    | ELitTrue
-    | ELitFalse
-    | EApp Abs.Ident [Expr]
-    | EString C.String
-    | Neg Expr
-    | Not Expr
+    = EVar Abs.Type Abs.Ident
+    | ELitInt Abs.Type C.Integer
+    | ELitDoub Abs.Type C.Double
+    | ELitTrue Abs.Type
+    | ELitFalse Abs.Type
+    | EApp Abs.Type Abs.Ident [Expr]
+    | EString Abs.Type C.String
+    | Neg Abs.Type Expr
+    | Not Abs.Type Expr
     | EMul Abs.Type Expr Abs.MulOp Expr
     | EAdd Abs.Type Expr Abs.AddOp Expr
     | ERel Abs.Type Expr Abs.RelOp Expr
-    | EAnd Expr Expr
-    | EOr Expr Expr
+    | EAnd Abs.Type Expr Expr
+    | EOr Abs.Type Expr Expr
   deriving (C.Eq, C.Ord, C.Show, C.Read)
 
 data Item = NoInit Abs.Ident | Init Abs.Ident Expr
