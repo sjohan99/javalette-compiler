@@ -9,19 +9,21 @@ import Javalette.Abs (Ident(..), Type)
 import qualified Javalette.Abs as Abs
 import FunType
 
-type Label = Int
+newtype Label = L Int
+newtype Reg = R Int
 type Addr  = Int
 
 data Fun = Fun Ident FunType
   deriving (Show)
-
-newtype Reg = R Integer
 
 class ToLLVM a where
   toLLVM :: a -> String
 
 instance ToLLVM Reg where
   toLLVM (R i) = "%t" ++ show i
+
+instance ToLLVM Label where
+  toLLVM (L i) = "%lab" ++ show i
 
 instance ToLLVM Ident where
   toLLVM (Ident s) = s
@@ -40,10 +42,40 @@ instance ToLLVM A.TopDef where
 
 
 instance ToLLVM Type where
-  toLLVM Abs.Int  = "i64"
+  toLLVM Abs.Int  = "i32"
   toLLVM Abs.Doub = "double"
   toLLVM Abs.Bool = "i1"
+  toLLVM Abs.Void = "void"
   toLLVM Abs.Str  = error "LLVM.Code: Strings not implemented"
+
+instance ToLLVM Abs.AddOp where
+  toLLVM Abs.Plus = "add"
+  toLLVM Abs.Minus = "sub"
+
+instance ToLLVM Abs.RelOp where
+  toLLVM Abs.LTH = "slt"
+  toLLVM Abs.LE  = "sle"
+  toLLVM Abs.GTH = "sgt"
+  toLLVM Abs.GE  = "sge"
+  toLLVM Abs.EQU = "eq"
+  toLLVM Abs.NE  = "ne"
+
+instance ToLLVM Expr where
+  toLLVM = \case
+    A.EVar t _ -> toLLVM t
+    A.ELitInt t _ -> toLLVM t
+    A.ELitDoub t _ -> toLLVM t
+    A.ELitTrue t -> toLLVM t
+    A.ELitFalse t -> toLLVM t
+    A.EApp t _ _ -> toLLVM t
+    A.EString t _ -> toLLVM t
+    A.Neg t _ -> toLLVM t
+    A.Not t _ -> toLLVM t
+    A.EMul t _ _ _ -> toLLVM t
+    A.EAdd t _ _ _ -> toLLVM t
+    A.ERel t _ _ _ -> toLLVM t
+    A.EAnd t _ _ -> toLLVM t
+    A.EOr t _ _ -> toLLVM t
 
 -- paramTypesFromFun :: Fun -> String
 -- paramTypesFromFun (Fun _ (FunType _ ts)) = concatMap prefix ts
@@ -54,24 +86,36 @@ instance ToLLVM Type where
 
 data Code
   = Load Type Reg Reg -- ^ Load from first register to second register.
-  | Br Expr Reg Label Label
+  | BrCond Expr Reg Label Label
+  | Br Label
   | Label Label
   | Alloca Reg Type
   | StoreInt Integer Reg
-  | Add Type Reg Abs.MulOp Reg
+  | StoreBool Bool Reg
+  | Add Reg Type Reg Abs.AddOp Reg
+  | Rel Reg Abs.RelOp Type Reg Reg
   | Call Reg Fun [Reg]
   | Return Type Reg
+  | Comment String
+  | Blank
 
 instance ToLLVM Code where
-  toLLVM = \case
-    Load t r1 r2 -> toLLVM r1 ++ " = load " ++ toLLVM t ++ "* " ++ toLLVM r2
-    Br e r l1 l2 -> "br " ++ toLLVM e ++ ", label %" ++ show l1 ++ ", label %" ++ show l2
-    Label l -> "L" ++ show l ++ ":"
-    Alloca r t -> toLLVM r ++ " = alloca " ++ toLLVM t
-    StoreInt i r -> "store i64 " ++ show i ++ ", i64* " ++ toLLVM r
-    Add t r1 op r2 -> toLLVM r1 ++ " = add " ++ toLLVM t ++ " " ++ toLLVM r1 ++ ", " ++ toLLVM r2
-    Call r f rs -> toLLVM r ++ " = call " ++ toLLVM f ++ "(" ++ intercalate ", " (map toLLVM rs) ++ ")"
-    Return t r -> "ret " ++ toLLVM t ++ " " ++ toLLVM r
+  toLLVM (Load t r1 r2) = toLLVM r1 ++ " = load " ++ toLLVM t ++ ", " ++ toLLVM t ++ "* " ++ toLLVM r2
+  toLLVM (BrCond e r l1 l2) = "br i1 " ++ toLLVM r ++ ", label " ++ toLLVM l1 ++ ", label " ++ toLLVM l2
+  toLLVM (Br l) = "br label " ++ toLLVM l
+  toLLVM (Label (L i)) = "lab" ++ show i ++ ":"
+  toLLVM (Alloca r t) = toLLVM r ++ " = alloca " ++ toLLVM t
+  toLLVM (StoreInt i r) = "store i32 " ++ show i ++ ", i32* " ++ toLLVM r
+  toLLVM (StoreBool b r) = "store i1 " ++ show (fromEnum b) ++ ", i1* " ++ toLLVM r
+  toLLVM (Add r1 t r2 op r3) = toLLVM r1 ++ " = " ++ toLLVM op ++ " " ++ toLLVM t ++ " " ++ toLLVM r2 ++ ", " ++ toLLVM r3
+  toLLVM (Rel r1 op t r2 r3) = toLLVM r1 ++ " = icmp " ++ toLLVM op ++ " " ++ toLLVM t ++ " " ++ toLLVM r2 ++ ", " ++ toLLVM r3
+  toLLVM (Call r f rs) = prefix ++ "call " ++ toLLVM t ++ " @" ++ toLLVM id ++ "(" ++ args ++ ")"
+      where (Fun id (FunType t ts)) = f
+            args = intercalate ", " [toLLVM t ++ " " ++ toLLVM r | (t, r) <- zip ts rs]
+            prefix = if t == Abs.Void then "" else toLLVM r ++ " = "
+  toLLVM (Return t r) = "ret " ++ toLLVM t ++ " " ++ toLLVM r
+  toLLVM (Comment s) = "; " ++ s
+  toLLVM Blank = ""
 
 -- | Idealized JVM instructions.
 -- Some idealized instructions (e.g., @Inc Type_double@)

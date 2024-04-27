@@ -7,6 +7,8 @@ import System.IO          (hPutStrLn, stderr)
 
 import Javalette.Par      (pProg, myLexer)
 import TypeChecker        (typecheck)
+import LLVM.Compiler      (compile)
+
 
 
 main :: IO ()
@@ -30,4 +32,7 @@ check s = do
         Left err -> do
           hPutStrLn stderr $ "ERROR: Type error: " ++ err
           exitFailure
-        Right tree' -> hPutStrLn stderr "OK" >> exitSuccess
+        Right tree' -> do
+          hPutStrLn stderr "Typecheck OK"
+          writeFile "llvm-out.ll" $ compile tree'
+          exitSuccess

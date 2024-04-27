@@ -35,10 +35,13 @@ library compiler
       FunType
       Annotated
       Javalette.Par
+      LLVM.Compiler
     other-modules:
       Javalette.Abs
       Javalette.Lex
       Javalette.Print
+      LLVM.Code
+      LLVM.Translator
     autogen-modules:
       Javalette.Abs
       Javalette.Lex
@@ -52,7 +55,7 @@ library compiler
       , mtl        >= 2.2.2    && < 2.4
       , transformers
 
-    hs-source-dirs:   .
+    hs-source-dirs:   ., LLVM
     default-language: Haskell2010
     default-extensions:
       LambdaCase
