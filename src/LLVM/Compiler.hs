@@ -40,18 +40,22 @@ type CxtBlock = [(Ident, (Reg, Type))]
 data St = St
   { sig :: Sig -- ^ Function signatures
   , cxt :: Cxt -- ^ Context
-  , nextRegister :: Int -- ^ Next register index.
+  , nextRegister :: Reg -- ^ Next register index.
   , nextLabel :: Label -- ^ Next jump label
+  , nextString :: StrConst -- ^ Next string index
   , output :: Output -- ^ Reversed code list (last instruction at front)
+  , stringConsts :: [Code]
   }
 
-initSt :: Sig -> St
-initSt s = St
+initSt :: Sig -> Int -> St
+initSt s strIdx = St
   { sig = s
   , cxt = [[]]
-  , nextRegister = 0 -- Begin at i (0..i is reserved for function arguments)
+  , nextRegister = R 0
   , nextLabel = L 0
+  , nextString = S (strIdx, 0)
   , output = []
+  , stringConsts = []
   }
 
 type Output = [Code]
@@ -64,6 +68,7 @@ builtin =
   , (Ident "printDouble", Fun (Ident "printDouble") (FunType Abs.Void   [Abs.Doub]))
   , (Ident "readInt",     Fun (Ident "readInt")     (FunType Abs.Int    []))
   , (Ident "readDouble",  Fun (Ident "readDouble")  (FunType Abs.Doub   []))
+  , (Ident "printString", Fun (Ident "printString") (FunType Abs.Void   [Abs.Str]))
   ]
 
 -- | Entry point.
@@ -71,7 +76,7 @@ compile
   :: Prog -- ^ Type-annotated program.
   -> String  -- ^ Generated llvm source file content.
 compile (Program defs) =
-  unlines header ++ unlines (concatMap (compileDef sig0) defs)
+  unlines header ++ unlines (combine (map (compileDef sig0) (zip defs [0..])))
   where
   sig0 = Map.fromList $ builtin ++ map sigEntry defs
   sigEntry def@(FnDef _ id _ _) = (id, Fun id (funType def))
@@ -83,25 +88,34 @@ compile (Program defs) =
     , "declare double @readDouble()"
     ]
 
+combine :: [([String], [Code])] -> [String]
+combine sc = map toLLVM cs ++ ss
+  where (ss, cs) = combine' sc
+
+combine' :: [([String], [Code])] -> ([String], [Code])
+combine' = foldr f ([], [])
+  where
+  f (ss, cs) (ss', cs') = (ss ++ ss', cs ++ cs')
+
 -- | Indent non-empty lines.
 indent :: String -> String
 indent s = if null s || ("lab" `isPrefixOf` s && last s == ':') then s else "\t" ++ s
 
-compileDef :: Sig -> TopDef -> [String]
-compileDef sig0 def@(FnDef t id args ss) = concat
+compileDef :: Sig -> (TopDef, Int) -> ([String], [Code])
+compileDef sig0 (def@(FnDef t id args ss), i) = (concat
   -- function header
   [ [ ""
     , toLLVM fun ++ " {"
     ]
   -- output code
-  , map (indent . toLLVM) $ cleanEmptyLabels $ reverse $ cleanDeadCode $ output st
+  , map (indent . toLLVM) $ clean $ output st
   -- function footer
   , [ ""
     , "}"
     ]
-  ]
+  ], stringConsts st)
   where
-   st = execState (compileFun id t args ss) $ initSt sig0
+   st = execState (compileFun id t args ss) $ initSt sig0 i
    fun = Fun id $ funType def
 
 cleanEmptyLabels :: [Code] -> [Code]
@@ -116,7 +130,7 @@ cleanDeadCode (Br _ : r@(Return _ _) : cs) = cleanDeadCode (r:cs)
 cleanDeadCode (c:cs) = c : cleanDeadCode cs
 
 clean :: [Code] -> [Code]
-clean = cleanDeadCode . cleanEmptyLabels
+clean = cleanEmptyLabels . reverse . cleanDeadCode
 
 compileFun :: Ident -> Type -> [Arg] -> [Stmt] -> Compile ()
 compileFun id _ args [] = do
@@ -137,7 +151,6 @@ compileFun id t args ss = do
 mapDeclsToNewVars :: [Arg] -> Compile ()
 mapDeclsToNewVars args = do
   mapM_ (\(Argument t x) -> newVar x t) args
-  --mapM_ (\(Argument t _, r) -> emit $ Alloca r t) $ zip args rs
 
 compileStm :: Stmt -> Compile ()
 compileStm s0 = do
@@ -177,49 +190,6 @@ compileStm s0 = do
 
     s -> error $ "unimplemented: " ++ show s
 
-    -- SInit t x e -> do
-    --   newVar x t
-    --   compileExp e
-    --   (a, _) <- lookupVar x
-    --   emit $ Store t a
-
-    -- SExp t e -> do
-    --   compileExp e
-    --   emit $ Pop t
-
-    -- SReturn t e -> do
-    --   compileExp e
-    --   emit $ Return t
-
-    -- SDecls t ids -> do
-    --   mapM_ (`newVar` t) ids
-
-    -- SBlock ss -> do
-    --   inNewBlock $ mapM_ compileStm ss
-
-    -- SIfElse e s1 s2 -> do
-    --     ifLabel   <- newLabel
-    --     elseLabel <- newLabel
-    --     compileExp e
-    --     emit $ If OEq elseLabel
-    --     inNewBlock $ compileStm s1
-    --     emit (Goto ifLabel)
-    --     emit (Label elseLabel)
-    --     inNewBlock $ compileStm s2
-    --     emit (Label ifLabel)
-
-    -- SWhile e s -> do
-    --   startLabel <- newLabel
-    --   trueLabel  <- newLabel
-    --   falseLabel <- newLabel
-    --   emit $ Label startLabel
-    --   compileExp e
-    --   emit $ If OEq falseLabel
-    --   emit $ Label trueLabel
-    --   inNewBlock $ compileStm s
-    --   emit $ Goto startLabel
-    --   emit $ Label falseLabel
-
 compileExpr :: Expr -> Compile Reg
 compileExpr = \case
 
@@ -247,6 +217,13 @@ compileExpr = \case
     emit $ Load Abs.Bool r2 r1
     return r2
 
+  EString t s -> do
+    sid <- newString
+    r <- newRegister
+    emit $ StringConst sid s
+    emit $ LoadStr r sid s
+    return r
+
   EAdd t e1 op e2 -> do
     r1 <- newRegister
     r2 <- compileExpr e1
@@ -273,88 +250,11 @@ compileExpr = \case
     return r1
 
   e -> error $ "unimplemented: " ++ show e
-  -- EDouble d -> emit $ DConst d
-
-  -- EBool b -> emit $ if b then IConst 1 else IConst 0
-
-  -- EId x -> do
-  --   (a, t) <- lookupVar x
-  --   emit $ Load t a
-
-  -- EApp x es -> do
-  --   mapM_ compileExp es
-  --   f <- lookupFun x
-  --   emit $ Call f
-
-  -- EPost id op -> do
-  --   (a, t) <- lookupVar id
-  --   emit $ Load t a
-  --   case op of
-  --     OInc -> do emit $ Inc t a 1
-  --     ODec -> do emit $ Inc t a (-1)
-
-  -- EPre op id -> do
-  --   (a, t) <- lookupVar id
-  --   case op of
-  --     OInc -> do emit $ Inc t a 1
-  --     ODec -> do emit $ Inc t a (-1)
-  --   emit $ Load t a
-
-  -- EArith t e1 op e2 -> do
-  --   compileExp e1
-  --   compileExp e2
-  --   emit $ Arith t op
-
-  -- ECmp t e1 cOp e2 -> do
-  --   trueLabel <- newLabel
-  --   emit $ IConst 1
-  --   compileExp e1
-  --   compileExp e2
-  --   emit $ IfCmp t cOp trueLabel
-  --   emit $ Pop Type_int
-  --   emit $ IConst 0
-  --   emit $ Label trueLabel
-
-  -- EAnd e1 e2 -> do
-  --   trueLabel  <- newLabel
-  --   falseLabel <- newLabel
-  --   compileExp e1
-  --   emit $ If OEq falseLabel
-  --   compileExp e2
-  --   emit $ If OEq falseLabel
-  --   emit $ IConst 1
-  --   emit $ Goto trueLabel
-  --   emit $ Label falseLabel
-  --   emit $ IConst 0
-  --   emit $ Label trueLabel
-
-  -- EOr e1 e2 -> do
-  --   trueLabel <- newLabel
-  --   endLabel  <- newLabel
-  --   compileExp e1
-  --   emit $ If ONEq trueLabel
-  --   compileExp e2
-  --   emit $ If ONEq trueLabel
-  --   emit $ IConst 0
-  --   emit $ Goto endLabel
-  --   emit $ Label trueLabel
-  --   emit $ IConst 1
-  --   emit $ Label endLabel
-
-  -- EAss x e -> do
-  --   compileExp e
-  --   (a, t) <- lookupVar x
-  --   emit $ Store t a
-  --   emit $ Load  t a
-
-  -- EI2D e -> do
-  --   compileExp e
-  --   emit I2D
 
 newRegister :: Compile Reg
 newRegister = do
-  n <- gets nextRegister
-  modify $ \st -> st { nextRegister = succ n }
+  (R n) <- gets nextRegister
+  modify $ \st -> st { nextRegister = R (succ n) }
   return $ R n
 
 newLabel :: Compile Label
@@ -362,6 +262,12 @@ newLabel = do
   l@(L i) <- gets nextLabel
   modify $ \st -> st { nextLabel = L (succ i) }
   return l
+
+newString :: Compile StrConst
+newString = do
+  s@(S (i, j)) <- gets nextString
+  modify $ \st -> st { nextString = S (i, succ j) }
+  return s
 
 inNewBlock :: Compile a -> Compile a
 inNewBlock cont = do
@@ -387,27 +293,16 @@ lookupRegister x = loop . concat <$> gets cxt
 lookupFun :: Ident -> Compile Fun
 lookupFun x = do
   m <- gets sig
-  return $ Map.findWithDefault (error $ "unknown function" ++ printTree x) x m
+  return $ Map.findWithDefault (error $ "unknown function " ++ printTree x) x m
 
 emit :: Code -> Compile ()
-
--- emit (Store Type_void _) = return ()
--- emit (Load Type_void _)  = return ()
--- emit (Dup Type_void)   = return ()
--- emit (Pop Type_void)   = return ()
-
--- emit (Inc t@Type_double a k) = do
---   emit $ Load t a
---   emit $ DConst $ fromIntegral k
---   emit $ Arith t OPlus
---   emit $ Store t a
-
--- emit (IfCmp Type_double o l) = do
---   emit DCmp
---   emit $ If o l
+emit (StringConst sid s) = do
+  modify $ \st@St{ stringConsts = scs } -> st{ stringConsts = StringConst sid s : scs }
 
 emit c = do
   modify $ \st@St{ output = cs } -> st{ output = c:cs }
+
+
 
 comment :: String -> Compile ()
 comment = emit . Comment

@@ -2,15 +2,18 @@
 module LLVM.Code where
 
 import Data.List (intercalate)
+import Numeric (showHex)
 
 import qualified Annotated as A
 import Annotated (TopDef(..), Expr)
 import Javalette.Abs (Ident(..), Type)
 import qualified Javalette.Abs as Abs
 import FunType
+import Data.Char (toUpper, isAsciiLower)
 
 newtype Label = L Int
 newtype Reg = R Int
+newtype StrConst = S (Int, Int)
 type Addr  = Int
 
 data Fun = Fun Ident FunType
@@ -24,6 +27,9 @@ instance ToLLVM Reg where
 
 instance ToLLVM Label where
   toLLVM (L i) = "%lab" ++ show i
+
+instance ToLLVM StrConst where
+  toLLVM (S (i, j)) = "@.str" ++ show i ++ "." ++ show j
 
 instance ToLLVM Ident where
   toLLVM (Ident s) = s
@@ -46,7 +52,7 @@ instance ToLLVM Type where
   toLLVM Abs.Doub = "double"
   toLLVM Abs.Bool = "i1"
   toLLVM Abs.Void = "void"
-  toLLVM Abs.Str  = error "LLVM.Code: Strings not implemented"
+  toLLVM Abs.Str  = "i8*"
 
 instance ToLLVM Abs.AddOp where
   toLLVM Abs.Plus = "add"
@@ -77,13 +83,6 @@ instance ToLLVM Expr where
     A.EAnd t _ _ -> toLLVM t
     A.EOr t _ _ -> toLLVM t
 
--- paramTypesFromFun :: Fun -> String
--- paramTypesFromFun (Fun _ (FunType _ ts)) = concatMap prefix ts
-
--- retTypeFromFun :: Fun -> String
--- retTypeFromFun (Fun _ (FunType Type_void _)) = "V"
--- retTypeFromFun (Fun _ (FunType t         _)) = prefix t
-
 data Code
   = Load Type Reg Reg -- ^ Load from first register to second register.
   | BrCond Expr Reg Label Label
@@ -97,6 +96,8 @@ data Code
   | Call Reg Fun [Reg]
   | Return Type Reg
   | Comment String
+  | StringConst StrConst String
+  | LoadStr Reg StrConst String
   | Blank
 
 instance ToLLVM Code where
@@ -114,8 +115,19 @@ instance ToLLVM Code where
             args = intercalate ", " [toLLVM t ++ " " ++ toLLVM r | (t, r) <- zip ts rs]
             prefix = if t == Abs.Void then "" else toLLVM r ++ " = "
   toLLVM (Return t r) = "ret " ++ toLLVM t ++ " " ++ toLLVM r
+  toLLVM (StringConst name s) = toLLVM name ++ " = internal constant [" ++ show (length s + 1)  ++ " x i8] c\"" ++ stringToHexString s ++ "\\00\""
+  toLLVM (LoadStr r name s) = toLLVM r ++ " = getelementptr [" ++ show (length s + 1) ++ " x i8], [" ++ show (length s + 1) ++ " x i8]* " ++ toLLVM name ++ ", i32 0, i32 0"
   toLLVM (Comment s) = "; " ++ s
   toLLVM Blank = ""
+
+stringToHexString :: String -> String
+stringToHexString = concatMap toHex
+  where toHex :: Char -> String
+        toHex c = "\\" ++ hex c
+        hex c = case showHex (fromEnum c) "" of
+          [a, b] -> [maybeUpper a, maybeUpper b]
+          [a]    -> ['0', maybeUpper a]
+        maybeUpper c = if isAsciiLower c then toUpper c else c
 
 -- | Idealized JVM instructions.
 -- Some idealized instructions (e.g., @Inc Type_double@)
