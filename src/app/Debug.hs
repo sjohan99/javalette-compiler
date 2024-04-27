@@ -11,10 +11,8 @@ import TypeChecker        (typecheck)
 
 main :: IO ()
 main = do
-  args <- getArgs
-  case take 1 args of
-    [] -> error "Please provide contents of a javalette source file as the first argument"
-    source:_ -> check source
+  sourceContents <- getContents
+  check sourceContents
 
 
 check :: String -> IO ()
