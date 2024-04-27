@@ -7,7 +7,7 @@
 
 module LLVM.Compiler (
   compile
-  ) where
+) where
 
 import Control.Monad
 import Control.Monad.Reader
@@ -193,29 +193,13 @@ compileStm s0 = do
 compileExpr :: Expr -> Compile Reg
 compileExpr = \case
 
-  ELitInt t i -> do
-    r1 <- newRegister
-    r2 <- newRegister
-    emit $ Alloca r1 Abs.Int
-    emit $ StoreInt i r1
-    emit $ Load Abs.Int r2 r1
-    return r2
+  e@(ELitInt t i) -> compileLiteral e t
 
-  ELitTrue t -> do
-    r1 <- newRegister
-    r2 <- newRegister
-    emit $ Alloca r1 Abs.Bool
-    emit $ StoreBool True r1
-    emit $ Load Abs.Bool r2 r1
-    return r2
+  e@(ELitDoub t d) -> compileLiteral e t
 
-  ELitFalse t -> do
-    r1 <- newRegister
-    r2 <- newRegister
-    emit $ Alloca r1 Abs.Bool
-    emit $ StoreBool False r1
-    emit $ Load Abs.Bool r2 r1
-    return r2
+  e@(ELitTrue t) -> compileLiteral e t
+
+  e@(ELitFalse t) -> compileLiteral e t
 
   EString t s -> do
     sid <- newString
@@ -229,6 +213,13 @@ compileExpr = \case
     r2 <- compileExpr e1
     r3 <- compileExpr e2
     emit $ Add r1 t r2 op r3
+    return r1
+
+  EMul t e1 op e2 -> do
+    r1 <- newRegister
+    r2 <- compileExpr e1
+    r3 <- compileExpr e2
+    emit $ Mul r1 t r2 op r3
     return r1
 
   EApp t id es -> do
@@ -250,6 +241,20 @@ compileExpr = \case
     return r1
 
   e -> error $ "unimplemented: " ++ show e
+
+compileLiteral :: Expr -> Type -> Compile Reg
+compileLiteral e t = do
+  r1 <- newRegister
+  r2 <- newRegister
+  emit $ Alloca r1 t
+  case e of
+    ELitInt _ i -> emit $ StoreInt i r1
+    ELitDoub _ d -> emit $ StoreDouble d r1
+    ELitTrue _ ->  emit $ StoreBool True r1
+    ELitFalse _ -> emit $ StoreBool False r1
+    _ -> error "compileLiteral: not a literal"
+  emit $ Load t r2 r1
+  return r2
 
 newRegister :: Compile Reg
 newRegister = do
@@ -301,8 +306,6 @@ emit (StringConst sid s) = do
 
 emit c = do
   modify $ \st@St{ output = cs } -> st{ output = c:cs }
-
-
 
 comment :: String -> Compile ()
 comment = emit . Comment

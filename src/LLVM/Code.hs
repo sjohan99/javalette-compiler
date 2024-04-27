@@ -58,6 +58,10 @@ instance ToLLVM Abs.AddOp where
   toLLVM Abs.Plus = "add"
   toLLVM Abs.Minus = "sub"
 
+instance ToLLVM Abs.MulOp where
+  toLLVM Abs.Times = "mul"
+  toLLVM Abs.Div   = "div"
+
 instance ToLLVM Abs.RelOp where
   toLLVM Abs.LTH = "slt"
   toLLVM Abs.LE  = "sle"
@@ -90,8 +94,10 @@ data Code
   | Label Label
   | Alloca Reg Type
   | StoreInt Integer Reg
+  | StoreDouble Double Reg
   | StoreBool Bool Reg
   | Add Reg Type Reg Abs.AddOp Reg
+  | Mul Reg Type Reg Abs.MulOp Reg
   | Rel Reg Abs.RelOp Type Reg Reg
   | Call Reg Fun [Reg]
   | Return Type Reg
@@ -107,8 +113,10 @@ instance ToLLVM Code where
   toLLVM (Label (L i)) = "lab" ++ show i ++ ":"
   toLLVM (Alloca r t) = toLLVM r ++ " = alloca " ++ toLLVM t
   toLLVM (StoreInt i r) = "store i32 " ++ show i ++ ", i32* " ++ toLLVM r
+  toLLVM (StoreDouble d r) = "store double " ++ show d ++ ", double* " ++ toLLVM r
   toLLVM (StoreBool b r) = "store i1 " ++ show (fromEnum b) ++ ", i1* " ++ toLLVM r
   toLLVM (Add r1 t r2 op r3) = toLLVM r1 ++ " = " ++ toLLVM op ++ " " ++ toLLVM t ++ " " ++ toLLVM r2 ++ ", " ++ toLLVM r3
+  toLLVM (Mul r1 t r2 op r3) = toLLVM r1 ++ " = " ++ toLLVM op ++ " " ++ toLLVM t ++ " " ++ toLLVM r2 ++ ", " ++ toLLVM r3
   toLLVM (Rel r1 op t r2 r3) = toLLVM r1 ++ " = icmp " ++ toLLVM op ++ " " ++ toLLVM t ++ " " ++ toLLVM r2 ++ ", " ++ toLLVM r3
   toLLVM (Call r f rs) = prefix ++ "call " ++ toLLVM t ++ " @" ++ toLLVM id ++ "(" ++ args ++ ")"
       where (Fun id (FunType t ts)) = f
@@ -119,6 +127,19 @@ instance ToLLVM Code where
   toLLVM (LoadStr r name s) = toLLVM r ++ " = getelementptr [" ++ show (length s + 1) ++ " x i8], [" ++ show (length s + 1) ++ " x i8]* " ++ toLLVM name ++ ", i32 0, i32 0"
   toLLVM (Comment s) = "; " ++ s
   toLLVM Blank = ""
+
+addOpWithPrefix :: Abs.AddOp -> Type -> String
+addOpWithPrefix op t = arithPrefix t ++ toLLVM op
+
+mulOpWithPrefix :: Abs.MulOp -> Type -> String
+mulOpWithPrefix Abs.Div Abs.Doub = "fdiv"
+mulOpWithPrefix Abs.Div Abs.Int  = "sdiv"
+mulOpWithPrefix Abs.Mod Abs.Int  = "srem"
+mulOpWithPrefix op t = arithPrefix t ++ toLLVM op
+
+arithPrefix :: Type -> String
+arithPrefix Abs.Doub = "f"
+arithPrefix Abs.Int  = ""
 
 stringToHexString :: String -> String
 stringToHexString = concatMap toHex
