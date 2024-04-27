@@ -1,12 +1,18 @@
 .PHONY : clean
 
-files=src/app/Main.hs src/Javalette.cf src/*.hs src/Javalette/*.hs
+files=src/app/Main.hs src/Javalette.cf src/*.hs src/Javalette/*.hs src/LLVM/*.hs
 
 jlc : $(files)
 	cd src && ghc --make app/Main.hs -o ../jlc
 
 debugjlc :
 	cd src && ghc --make app/Debug.hs -o ../debugjlc
+
+runllvm : llvm-out.ll runtime.ll
+	opt -O3 llvm-out.ll > llvm-out-opt.bc
+	llvm-as runtime.ll
+	llvm-link llvm-out-opt.bc runtime.bc > llvm-out-linked.bc
+	lli llvm-out-linked.bc
 
 scratch : parser jlc
 
