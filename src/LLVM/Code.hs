@@ -34,10 +34,6 @@ instance ToLLVM StrConst where
 instance ToLLVM Ident where
   toLLVM (Ident s) = s
 
-instance ToLLVM Fun where
-  toLLVM (Fun i (FunType rt ts)) = concat ["define ", toLLVM rt, " @", toLLVM i, "(", args, ")"]
-    where args = intercalate ", " [toLLVM t ++ " " ++ toLLVM (R i) | (t, i) <- zip ts [0..]]
-
 instance ToLLVM Abs.Arg where
   toLLVM (Abs.Argument t i) = toLLVM t ++ " " ++ toLLVM i
 
@@ -62,13 +58,21 @@ instance ToLLVM Abs.MulOp where
   toLLVM Abs.Times = "mul"
   toLLVM Abs.Div   = "div"
 
-instance ToLLVM Abs.RelOp where
-  toLLVM Abs.LTH = "slt"
-  toLLVM Abs.LE  = "sle"
-  toLLVM Abs.GTH = "sgt"
-  toLLVM Abs.GE  = "sge"
-  toLLVM Abs.EQU = "eq"
-  toLLVM Abs.NE  = "ne"
+intRelOp :: Abs.RelOp -> String
+intRelOp Abs.LTH = "slt"
+intRelOp Abs.LE  = "sle"
+intRelOp Abs.GTH = "sgt"
+intRelOp Abs.GE  = "sge"
+intRelOp Abs.EQU = "eq"
+intRelOp Abs.NE  = "ne"
+
+doubRelOp :: Abs.RelOp -> String
+doubRelOp Abs.LTH = "olt"
+doubRelOp Abs.LE  = "ole"
+doubRelOp Abs.GTH = "ogt"
+doubRelOp Abs.GE  = "oge"
+doubRelOp Abs.EQU = "oeq"
+doubRelOp Abs.NE  = "one"
 
 instance ToLLVM Expr where
   toLLVM = \case
@@ -88,21 +92,25 @@ instance ToLLVM Expr where
     A.EOr t _ _ -> toLLVM t
 
 data Code
-  = Load Type Reg Reg -- ^ Load from first register to second register.
-  | BrCond Expr Reg Label Label
+  = Load Type Reg Reg -- ^ Load value from second register to first register.
+  | BrCond Expr Reg Label Label -- ^ Branch to 1st label if register is true, otherwise branch to 2nd label.
   | Br Label
   | Label Label
   | Alloca Reg Type
   | StoreInt Integer Reg
   | StoreDouble Double Reg
   | StoreBool Bool Reg
-  | Store Type Reg Reg
+  | Store Type Reg Reg -- ^ Store value of r1 in memory location r2.
   | Add Reg Type Reg Abs.AddOp Reg
   | Mul Reg Type Reg Abs.MulOp Reg
   | Rel Reg Abs.RelOp Type Reg Reg
   | Negate Reg Type Reg
   | Call Reg Fun [Reg]
   | Return Type Reg
+  | ReturnVoid
+  | LogicalNot Type Reg Reg
+  | FunHeader Ident Type [Abs.Arg]
+  | FunFooter
   | Comment String
   | StringConst StrConst String
   | LoadStr Reg StrConst String
@@ -120,16 +128,22 @@ instance ToLLVM Code where
   toLLVM (Store t r1 r2) = "store " ++ toLLVM t ++ " " ++ toLLVM r1 ++ ", " ++ toLLVM t ++ "* " ++ toLLVM r2
   toLLVM (Add r1 t r2 op r3) = toLLVM r1 ++ " = " ++ toLLVM op ++ " " ++ toLLVM t ++ " " ++ toLLVM r2 ++ ", " ++ toLLVM r3
   toLLVM (Mul r1 t r2 op r3) = toLLVM r1 ++ " = " ++ toLLVM op ++ " " ++ toLLVM t ++ " " ++ toLLVM r2 ++ ", " ++ toLLVM r3
-  toLLVM (Rel r1 op t r2 r3) = toLLVM r1 ++ " = icmp " ++ toLLVM op ++ " " ++ toLLVM t ++ " " ++ toLLVM r2 ++ ", " ++ toLLVM r3
+  toLLVM (Rel r1 op t@Abs.Doub r2 r3) = toLLVM r1 ++ " = fcmp " ++ doubRelOp op ++ " " ++ toLLVM t ++ " " ++ toLLVM r2 ++ ", " ++ toLLVM r3
+  toLLVM (Rel r1 op t r2 r3) = toLLVM r1 ++ " = icmp " ++ intRelOp op ++ " " ++ toLLVM t ++ " " ++ toLLVM r2 ++ ", " ++ toLLVM r3
   toLLVM (Negate r1 t@Abs.Doub r2) = toLLVM r1 ++ " = fneg " ++ toLLVM t ++ " " ++ toLLVM r2
   toLLVM (Negate r1 t r2) = toLLVM r1 ++ " = sub " ++ toLLVM t ++ " 0, " ++ toLLVM r2
   toLLVM (Call r f rs) = prefix ++ "call " ++ toLLVM t ++ " @" ++ toLLVM id ++ "(" ++ args ++ ")"
       where (Fun id (FunType t ts)) = f
             args = intercalate ", " [toLLVM t ++ " " ++ toLLVM r | (t, r) <- zip ts rs]
             prefix = if t == Abs.Void then "" else toLLVM r ++ " = "
+  toLLVM (LogicalNot t r1 r2) = toLLVM r1 ++ " = xor " ++ toLLVM t ++ " " ++ toLLVM r2 ++ ", 1"
   toLLVM (Return t r) = "ret " ++ toLLVM t ++ " " ++ toLLVM r
+  toLLVM ReturnVoid = "ret void"
+  toLLVM (FunHeader id rt as) = concat ["define ", toLLVM rt, " @", toLLVM id, "(", args, ")", " {"]
+    where args = intercalate ", " [toLLVM t ++ " " ++ toLLVM (R i) | (Abs.Argument t _, i) <- zip as [0..]]
   toLLVM (StringConst name s) = toLLVM name ++ " = internal constant [" ++ show (length s + 1)  ++ " x i8] c\"" ++ stringToHexString s ++ "\\00\""
   toLLVM (LoadStr r name s) = toLLVM r ++ " = getelementptr [" ++ show (length s + 1) ++ " x i8], [" ++ show (length s + 1) ++ " x i8]* " ++ toLLVM name ++ ", i32 0, i32 0"
+  toLLVM FunFooter = "}"
   toLLVM (Comment s) = "; " ++ s
   toLLVM Blank = ""
 

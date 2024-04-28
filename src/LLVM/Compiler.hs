@@ -99,21 +99,18 @@ combine' = foldr f ([], [])
 
 -- | Indent non-empty lines.
 indent :: String -> String
-indent s = if null s || ("lab" `isPrefixOf` s && last s == ':') then s else "\t" ++ s
+indent s
+  | null s = s
+  | "lab" `isPrefixOf` s && last s == ':' = s
+  | "}" `isPrefixOf` s = s
+  | "define" `isPrefixOf` s = s
+  | otherwise = "\t" ++ s
 
 compileDef :: Sig -> (TopDef, Int) -> ([String], [Code])
-compileDef sig0 (def@(FnDef t id args ss), i) = (concat
-  -- function header
-  [ [ ""
-    , toLLVM fun ++ " {"
-    ]
-  -- output code
-  , map (indent . toLLVM) $ clean $ output st
-  -- function footer
-  , [ ""
-    , "}"
-    ]
-  ], stringConsts st)
+compileDef sig0 (def@(FnDef t id args ss), i) = (
+    map (indent . toLLVM) $ clean $ output st
+  , stringConsts st
+  )
   where
    st = execState (compileFun id t args ss) $ initSt sig0 i
    fun = Fun id $ funType def
@@ -133,33 +130,46 @@ clean :: [Code] -> [Code]
 clean = cleanEmptyLabels . reverse . cleanDeadCode
 
 compileFun :: Ident -> Type -> [Arg] -> [Stmt] -> Compile ()
-compileFun id _ args [] = do
+compileFun id t args [] = do
+  emit $ FunHeader id t args
   l <- newLabel
   emit $ Label l
-  mapDeclsToNewVars args
   mapM_ compileStmt [VRet] -- Add return void statement if not present
+  emit FunFooter
 
 compileFun id t args ss = do
+  emit $ FunHeader id t args
   l <- newLabel
   emit $ Label l
-  mapDeclsToNewVars args
+  regs <- createArgRegisters args
+  mapDeclsToNewVars regs args
   case last ss of
     Ret t e -> mapM_ compileStmt ss
     VRet    -> mapM_ compileStmt ss
     _       -> mapM_ compileStmt (ss) -- ++ [VRet]) -- Add return void statement if not present
+  emit FunFooter
 
-mapDeclsToNewVars :: [Arg] -> Compile ()
-mapDeclsToNewVars args = do
-  mapM_ (\(Argument t x) -> newVar x t) args
+mapDeclsToNewVars :: [Reg] -> [Arg] -> Compile ()
+mapDeclsToNewVars regs args = mapM_ f (zip args regs)
+  where f (Argument t x, r) = do
+          r' <- newVar x t
+          emit $ Store t r r'
+
+createArgRegisters :: [Arg] -> Compile [Reg]
+createArgRegisters = mapM (\(Argument t x) -> newRegister)
+
+compileArg :: Arg -> Compile ()
+compileArg (Argument t x) = do
+  r <- newVar x t
+  emit $ Store t r r
 
 compileItem :: Type -> Item -> Compile ()
 compileItem t = \case
   NoInit id -> do
     r <- newVar id t
-    emit $ Alloca r t
+    return ()
   Init id e -> do
     r1 <- newVar id t
-    emit $ Alloca r1 t
     r2 <- compileExpr e
     emit $ Store t r2 r1
 
@@ -177,6 +187,9 @@ compileStmt s0 = do
     Ret t e -> do
       r <- compileExpr e
       emit $ Return t r
+
+    VRet -> do
+      emit ReturnVoid
 
     Decl t items -> do
       mapM_ (compileItem t) items
@@ -197,6 +210,16 @@ compileStmt s0 = do
       emit $ Br doneLabel
       emit $ Label falseLabel
       inNewBlock $ compileStmt s2
+      emit $ Br doneLabel
+      emit $ Label doneLabel
+
+    Cond e s -> do
+      r <- compileExpr e
+      trueLabel <- newLabel
+      doneLabel <- newLabel
+      emit $ BrCond e r trueLabel doneLabel
+      emit $ Label trueLabel
+      inNewBlock $ compileStmt s
       emit $ Br doneLabel
       emit $ Label doneLabel
 
@@ -258,7 +281,7 @@ compileExpr = \case
     r1 <- newRegister
     r2 <- compileExpr e1
     r3 <- compileExpr e2
-    emit $ Rel r1 op Abs.Int r2 r3
+    emit $ Rel r1 op t r2 r3
     return r1
 
   Neg t e -> do
@@ -266,6 +289,61 @@ compileExpr = \case
     r2 <- compileExpr e
     emit $ Negate r1 t r2
     return r1
+
+  Not t e -> do
+    r1 <- newRegister
+    r2 <- compileExpr e
+    emit $ LogicalNot t r1 r2
+    return r1
+
+  EOr t e1 e2 -> do
+    e1TrueLabel <- newLabel
+    e1FalseLabel <- newLabel
+    doneLabel <- newLabel
+
+    r1 <- newRegister
+    emit $ Alloca r1 t
+
+    -- check the first expression
+    r2 <- compileExpr e1
+    emit $ BrCond e1 r2 e1TrueLabel e1FalseLabel
+    emit $ Label e1TrueLabel
+    emit $ StoreBool True r1
+    emit $ Br doneLabel
+
+    -- check the second expression, iff the first is false
+    emit $ Label e1FalseLabel
+    r3 <- compileExpr e2
+    emit $ Store t r3 r1
+    emit $ Br doneLabel
+
+    emit $ Label doneLabel
+    r4 <- newRegister
+    emit $ Load t r4 r1
+    return r4
+
+  EAnd t e1 e2 -> do
+    e1TrueLabel <- newLabel
+    e1FalseLabel <- newLabel
+    doneLabel <- newLabel
+    r1 <- newRegister
+    emit $ Alloca r1 t
+    r2 <- compileExpr e1
+    emit $ BrCond e1 r2 e1TrueLabel e1FalseLabel
+
+    emit $ Label e1TrueLabel
+    r3 <- compileExpr e2
+    emit $ Store t r3 r1
+    emit $ Br doneLabel
+
+    emit $ Label e1FalseLabel
+    emit $ StoreBool False r1
+    emit $ Br doneLabel
+
+    emit $ Label doneLabel
+    r4 <- newRegister
+    emit $ Load t r4 r1
+    return r4
 
   e -> error $ "unimplemented: " ++ printTree (expToAbs e)
 
@@ -311,6 +389,7 @@ inNewBlock cont = do
 newVar :: Ident -> Type -> Compile Reg
 newVar x t = do
   r <- newRegister
+  emit $ Alloca r t
   modify $ \st@St{ cxt = (b:bs) } -> st { cxt = ((x,(r, t)) : b) : bs }
   return r
 
