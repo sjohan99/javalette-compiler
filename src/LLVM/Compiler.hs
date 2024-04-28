@@ -137,23 +137,34 @@ compileFun id _ args [] = do
   l <- newLabel
   emit $ Label l
   mapDeclsToNewVars args
-  mapM_ compileStm [VRet] -- Add return void statement if not present
+  mapM_ compileStmt [VRet] -- Add return void statement if not present
 
 compileFun id t args ss = do
   l <- newLabel
   emit $ Label l
   mapDeclsToNewVars args
   case last ss of
-    Ret t e -> mapM_ compileStm ss
-    VRet    -> mapM_ compileStm ss
-    _       -> mapM_ compileStm (ss) -- ++ [VRet]) -- Add return void statement if not present
+    Ret t e -> mapM_ compileStmt ss
+    VRet    -> mapM_ compileStmt ss
+    _       -> mapM_ compileStmt (ss) -- ++ [VRet]) -- Add return void statement if not present
 
 mapDeclsToNewVars :: [Arg] -> Compile ()
 mapDeclsToNewVars args = do
   mapM_ (\(Argument t x) -> newVar x t) args
 
-compileStm :: Stmt -> Compile ()
-compileStm s0 = do
+compileItem :: Type -> Item -> Compile ()
+compileItem t = \case
+  NoInit id -> do
+    r <- newVar id t
+    emit $ Alloca r t
+  Init id e -> do
+    r1 <- newVar id t
+    emit $ Alloca r1 t
+    r2 <- compileExpr e
+    emit $ Store t r2 r1
+
+compileStmt :: Stmt -> Compile ()
+compileStmt s0 = do
 
   -- Output a comment with the statement to compile
   let top = printTree $ stmToAbs s0
@@ -167,6 +178,14 @@ compileStm s0 = do
       r <- compileExpr e
       emit $ Return t r
 
+    Decl t items -> do
+      mapM_ (compileItem t) items
+
+    Ass t id e -> do
+      r1 <- compileExpr e
+      (r2, _) <- lookupRegister id
+      emit $ Store t r1 r2
+
     CondElse e s1 s2 -> do
       r <- compileExpr e
       trueLabel  <- newLabel
@@ -174,21 +193,21 @@ compileStm s0 = do
       doneLabel <- newLabel
       emit $ BrCond e r trueLabel falseLabel
       emit $ Label trueLabel
-      inNewBlock $ compileStm s1
+      inNewBlock $ compileStmt s1
       emit $ Br doneLabel
       emit $ Label falseLabel
-      inNewBlock $ compileStm s2
+      inNewBlock $ compileStmt s2
       emit $ Br doneLabel
       emit $ Label doneLabel
 
     BStmt ss -> do
-      inNewBlock $ mapM_ compileStm ss
+      inNewBlock $ mapM_ compileStmt ss
 
     SExp t e -> do
       compileExpr e
       return ()
 
-    s -> error $ "unimplemented: " ++ show s
+    s -> error $ "unimplemented: " ++ printTree (stmToAbs s)
 
 compileExpr :: Expr -> Compile Reg
 compileExpr = \case
@@ -230,8 +249,10 @@ compileExpr = \case
     return r
 
   EVar t x -> do
-    (r, _) <- lookupRegister x
-    return r
+    (r1, _) <- lookupRegister x
+    r2 <- newRegister
+    emit $ Load t r2 r1
+    return r2
 
   ERel t e1 op e2 -> do
     r1 <- newRegister
@@ -240,7 +261,13 @@ compileExpr = \case
     emit $ Rel r1 op Abs.Int r2 r3
     return r1
 
-  e -> error $ "unimplemented: " ++ show e
+  Neg t e -> do
+    r1 <- newRegister
+    r2 <- compileExpr e
+    emit $ Negate r1 t r2
+    return r1
+
+  e -> error $ "unimplemented: " ++ printTree (expToAbs e)
 
 compileLiteral :: Expr -> Type -> Compile Reg
 compileLiteral e t = do

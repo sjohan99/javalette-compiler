@@ -33,6 +33,6 @@ check s = do
           hPutStrLn stderr $ "ERROR: Type error: " ++ err
           exitFailure
         Right tree' -> do
-          hPutStrLn stderr "Typecheck OK"
-          writeFile "llvm-out.ll" $ compile tree'
+          hPutStrLn stderr "OK"
+          putStrLn $ compile tree'
           exitSuccess

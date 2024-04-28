@@ -8,6 +8,7 @@ stmToAbs :: Stmt -> Abs.Stmt
 stmToAbs Empty = Abs.Empty
 stmToAbs (BStmt ss) = Abs.BStmt (map stmToAbs ss)
 stmToAbs (Decl t ids) = Abs.Decl t (map itemToAbs ids)
+stmToAbs (Ass t i e) = Abs.Ass i (expToAbs e)
 stmToAbs (Incr t id) = Abs.Incr id
 stmToAbs (Decr t id) = Abs.Decr id
 stmToAbs (Ret t e) = Abs.Ret (expToAbs e)

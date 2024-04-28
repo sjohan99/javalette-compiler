@@ -96,9 +96,11 @@ data Code
   | StoreInt Integer Reg
   | StoreDouble Double Reg
   | StoreBool Bool Reg
+  | Store Type Reg Reg
   | Add Reg Type Reg Abs.AddOp Reg
   | Mul Reg Type Reg Abs.MulOp Reg
   | Rel Reg Abs.RelOp Type Reg Reg
+  | Negate Reg Type Reg
   | Call Reg Fun [Reg]
   | Return Type Reg
   | Comment String
@@ -115,9 +117,12 @@ instance ToLLVM Code where
   toLLVM (StoreInt i r) = "store i32 " ++ show i ++ ", i32* " ++ toLLVM r
   toLLVM (StoreDouble d r) = "store double " ++ show d ++ ", double* " ++ toLLVM r
   toLLVM (StoreBool b r) = "store i1 " ++ show (fromEnum b) ++ ", i1* " ++ toLLVM r
+  toLLVM (Store t r1 r2) = "store " ++ toLLVM t ++ " " ++ toLLVM r1 ++ ", " ++ toLLVM t ++ "* " ++ toLLVM r2
   toLLVM (Add r1 t r2 op r3) = toLLVM r1 ++ " = " ++ toLLVM op ++ " " ++ toLLVM t ++ " " ++ toLLVM r2 ++ ", " ++ toLLVM r3
   toLLVM (Mul r1 t r2 op r3) = toLLVM r1 ++ " = " ++ toLLVM op ++ " " ++ toLLVM t ++ " " ++ toLLVM r2 ++ ", " ++ toLLVM r3
   toLLVM (Rel r1 op t r2 r3) = toLLVM r1 ++ " = icmp " ++ toLLVM op ++ " " ++ toLLVM t ++ " " ++ toLLVM r2 ++ ", " ++ toLLVM r3
+  toLLVM (Negate r1 t@Abs.Doub r2) = toLLVM r1 ++ " = fneg " ++ toLLVM t ++ " " ++ toLLVM r2
+  toLLVM (Negate r1 t r2) = toLLVM r1 ++ " = sub " ++ toLLVM t ++ " 0, " ++ toLLVM r2
   toLLVM (Call r f rs) = prefix ++ "call " ++ toLLVM t ++ " @" ++ toLLVM id ++ "(" ++ args ++ ")"
       where (Fun id (FunType t ts)) = f
             args = intercalate ", " [toLLVM t ++ " " ++ toLLVM r | (t, r) <- zip ts rs]
