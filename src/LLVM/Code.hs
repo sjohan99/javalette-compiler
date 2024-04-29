@@ -112,6 +112,7 @@ data Code
   | ReturnVoid
   | Initialize Reg Type -- ^ Initialize register with default value.
   | LogicalNot Type Reg Reg
+  | Unreachable
   | FunHeader Ident Type [Abs.Arg]
   | FunFooter
   | Comment String
@@ -129,8 +130,8 @@ instance ToLLVM Code where
   toLLVM (StoreDouble d r) = "store double " ++ show d ++ ", double* " ++ toLLVM r
   toLLVM (StoreBool b r) = "store i1 " ++ show (fromEnum b) ++ ", i1* " ++ toLLVM r
   toLLVM (Store t r1 r2) = "store " ++ toLLVM t ++ " " ++ toLLVM r1 ++ ", " ++ toLLVM t ++ "* " ++ toLLVM r2
-  toLLVM (Add r1 t r2 op r3) = toLLVM r1 ++ " = " ++ toLLVM op ++ " " ++ toLLVM t ++ " " ++ toLLVM r2 ++ ", " ++ toLLVM r3
-  toLLVM (Mul r1 t r2 op r3) = toLLVM r1 ++ " = " ++ toLLVM op ++ " " ++ toLLVM t ++ " " ++ toLLVM r2 ++ ", " ++ toLLVM r3
+  toLLVM (Add r1 t r2 op r3) = toLLVM r1 ++ " = " ++ addOpWithPrefix op t ++ " " ++ toLLVM t ++ " " ++ toLLVM r2 ++ ", " ++ toLLVM r3
+  toLLVM (Mul r1 t r2 op r3) = toLLVM r1 ++ " = " ++ mulOpWithPrefix op t ++ " " ++ toLLVM t ++ " " ++ toLLVM r2 ++ ", " ++ toLLVM r3
   toLLVM (Rel r1 op t@Abs.Doub r2 r3) = toLLVM r1 ++ " = fcmp " ++ doubRelOp op ++ " " ++ toLLVM t ++ " " ++ toLLVM r2 ++ ", " ++ toLLVM r3
   toLLVM (Rel r1 op t r2 r3) = toLLVM r1 ++ " = icmp " ++ intRelOp op ++ " " ++ toLLVM t ++ " " ++ toLLVM r2 ++ ", " ++ toLLVM r3
   toLLVM (Inc t@Abs.Doub r1 r2) = toLLVM r1 ++ " = fadd " ++ toLLVM t ++ " " ++ toLLVM r2 ++ ", 1.0"
@@ -146,6 +147,7 @@ instance ToLLVM Code where
   toLLVM (LogicalNot t r1 r2) = toLLVM r1 ++ " = xor " ++ toLLVM t ++ " " ++ toLLVM r2 ++ ", 1"
   toLLVM (Return t r) = "ret " ++ toLLVM t ++ " " ++ toLLVM r
   toLLVM ReturnVoid = "ret void"
+  toLLVM Unreachable = "unreachable"
   toLLVM (Initialize r t) = "store " ++ toLLVM t ++ " " ++ initialValue t ++ ", " ++ toLLVM t ++ "* " ++ toLLVM r
   toLLVM (FunHeader id rt as) = concat ["define ", toLLVM rt, " @", toLLVM id, "(", args, ")", " {"]
     where args = intercalate ", " [toLLVM t ++ " " ++ toLLVM (R i) | (Abs.Argument t _, i) <- zip as [0..]]

@@ -119,11 +119,14 @@ cleanEmptyLabels :: [Code] -> [Code]
 cleanEmptyLabels [] = []
 cleanEmptyLabels (Label _ : Label l : cs) = cleanEmptyLabels (Label l:cs)
 cleanEmptyLabels [Label _] = []
+cleanEmptyLabels (Label l : FunFooter : cs) = cleanEmptyLabels (FunFooter:cs)
+cleanEmptyLabels (Label l : Br _ : cs) = cleanEmptyLabels (Label l : Unreachable :cs)
 cleanEmptyLabels (c:cs) = c : cleanEmptyLabels cs
 
 cleanDeadCode :: [Code] -> [Code]
 cleanDeadCode [] = []
-cleanDeadCode (Br _ : r@(Return _ _) : cs) = cleanDeadCode (r:cs)
+cleanDeadCode (Br _ : r@(Return _ _) : cs) = cleanDeadCode (Unreachable:r:cs)
+cleanDeadCode (Br _ : r@ReturnVoid : cs) = cleanDeadCode (Unreachable:r:cs)
 cleanDeadCode (c:cs) = c : cleanDeadCode cs
 
 clean :: [Code] -> [Code]
@@ -143,10 +146,11 @@ compileFun id t args ss = do
   emit $ Label l
   regs <- createArgRegisters args
   mapDeclsToNewVars regs args
-  case last ss of
-    Ret t e -> mapM_ compileStmt ss
-    VRet    -> mapM_ compileStmt ss
-    _       -> mapM_ compileStmt (ss) -- ++ [VRet]) -- Add return void statement if not present
+  case (t, last ss) of
+    (_, Ret _ _)  -> mapM_ compileStmt ss
+    (_, VRet)     -> mapM_ compileStmt ss
+    (Abs.Void, _) -> mapM_ compileStmt (ss ++ [VRet]) -- Add return void statement if not present
+    _             -> mapM_ compileStmt ss
   emit FunFooter
 
 mapDeclsToNewVars :: [Reg] -> [Arg] -> Compile ()
@@ -169,8 +173,8 @@ compileItem t = \case
     r <- newVar id t
     return ()
   Init id e -> do
-    r1 <- newVar id t
     r2 <- compileExpr e
+    r1 <- newVar id t
     emit $ Store t r2 r1
 
 compileStmt :: Stmt -> Compile ()
@@ -184,6 +188,8 @@ compileStmt s0 = do
 
   -- Compile the statement
   case s0 of
+    Empty -> return ()
+
     Ret t e -> do
       r <- compileExpr e
       emit $ Return t r
