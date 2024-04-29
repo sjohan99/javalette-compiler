@@ -199,6 +199,22 @@ compileStmt s0 = do
       (r2, _) <- lookupRegister id
       emit $ Store t r1 r2
 
+    Incr t id -> do
+      (r1, _) <- lookupRegister id
+      rx <- newRegister
+      emit $ Load t rx r1
+      r2 <- newRegister
+      emit $ Inc t r2 rx
+      emit $ Store t r2 r1
+
+    Decr t id -> do
+      (r1, _) <- lookupRegister id
+      rx <- newRegister
+      emit $ Load t rx r1
+      r2 <- newRegister
+      emit $ Dec t r2 rx
+      emit $ Store t r2 r1
+      
     CondElse e s1 s2 -> do
       r <- compileExpr e
       trueLabel  <- newLabel
@@ -222,6 +238,23 @@ compileStmt s0 = do
       inNewBlock $ compileStmt s
       emit $ Br doneLabel
       emit $ Label doneLabel
+
+    While e s -> do
+      checkCondLabel <- newLabel
+      loopLabel <- newLabel
+      exitLabel <- newLabel
+
+      emit $ Br checkCondLabel
+      emit $ Label checkCondLabel
+      r1 <- compileExpr e
+      emit $ BrCond e r1 loopLabel exitLabel
+
+      emit $ Label loopLabel
+      inNewBlock $ compileStmt s
+      emit $ Br checkCondLabel
+
+      emit $ Label exitLabel
+
 
     BStmt ss -> do
       inNewBlock $ mapM_ compileStmt ss
@@ -390,6 +423,7 @@ newVar :: Ident -> Type -> Compile Reg
 newVar x t = do
   r <- newRegister
   emit $ Alloca r t
+  emit $ Initialize r t
   modify $ \st@St{ cxt = (b:bs) } -> st { cxt = ((x,(r, t)) : b) : bs }
   return r
 

@@ -104,10 +104,13 @@ data Code
   | Add Reg Type Reg Abs.AddOp Reg
   | Mul Reg Type Reg Abs.MulOp Reg
   | Rel Reg Abs.RelOp Type Reg Reg
+  | Inc Type Reg Reg -- ^ Add 1 to value of the second register with result in the first register.
+  | Dec Type Reg Reg -- ^ Subtract 1 from value of r2 with result in r1.
   | Negate Reg Type Reg
   | Call Reg Fun [Reg]
   | Return Type Reg
   | ReturnVoid
+  | Initialize Reg Type -- ^ Initialize register with default value.
   | LogicalNot Type Reg Reg
   | FunHeader Ident Type [Abs.Arg]
   | FunFooter
@@ -130,6 +133,10 @@ instance ToLLVM Code where
   toLLVM (Mul r1 t r2 op r3) = toLLVM r1 ++ " = " ++ toLLVM op ++ " " ++ toLLVM t ++ " " ++ toLLVM r2 ++ ", " ++ toLLVM r3
   toLLVM (Rel r1 op t@Abs.Doub r2 r3) = toLLVM r1 ++ " = fcmp " ++ doubRelOp op ++ " " ++ toLLVM t ++ " " ++ toLLVM r2 ++ ", " ++ toLLVM r3
   toLLVM (Rel r1 op t r2 r3) = toLLVM r1 ++ " = icmp " ++ intRelOp op ++ " " ++ toLLVM t ++ " " ++ toLLVM r2 ++ ", " ++ toLLVM r3
+  toLLVM (Inc t@Abs.Doub r1 r2) = toLLVM r1 ++ " = fadd " ++ toLLVM t ++ " " ++ toLLVM r2 ++ ", 1.0"
+  toLLVM (Inc t r1 r2) = toLLVM r1 ++ " = add " ++ toLLVM t ++ " " ++ toLLVM r2 ++ ", 1"
+  toLLVM (Dec t@Abs.Doub r1 r2) = toLLVM r1 ++ " = fsub " ++ toLLVM t ++ " " ++ toLLVM r2 ++ ", 1.0"
+  toLLVM (Dec t r1 r2) = toLLVM r1 ++ " = sub " ++ toLLVM t ++ " " ++ toLLVM r2 ++ ", 1"
   toLLVM (Negate r1 t@Abs.Doub r2) = toLLVM r1 ++ " = fneg " ++ toLLVM t ++ " " ++ toLLVM r2
   toLLVM (Negate r1 t r2) = toLLVM r1 ++ " = sub " ++ toLLVM t ++ " 0, " ++ toLLVM r2
   toLLVM (Call r f rs) = prefix ++ "call " ++ toLLVM t ++ " @" ++ toLLVM id ++ "(" ++ args ++ ")"
@@ -139,6 +146,7 @@ instance ToLLVM Code where
   toLLVM (LogicalNot t r1 r2) = toLLVM r1 ++ " = xor " ++ toLLVM t ++ " " ++ toLLVM r2 ++ ", 1"
   toLLVM (Return t r) = "ret " ++ toLLVM t ++ " " ++ toLLVM r
   toLLVM ReturnVoid = "ret void"
+  toLLVM (Initialize r t) = "store " ++ toLLVM t ++ " " ++ initialValue t ++ ", " ++ toLLVM t ++ "* " ++ toLLVM r
   toLLVM (FunHeader id rt as) = concat ["define ", toLLVM rt, " @", toLLVM id, "(", args, ")", " {"]
     where args = intercalate ", " [toLLVM t ++ " " ++ toLLVM (R i) | (Abs.Argument t _, i) <- zip as [0..]]
   toLLVM (StringConst name s) = toLLVM name ++ " = internal constant [" ++ show (length s + 1)  ++ " x i8] c\"" ++ stringToHexString s ++ "\\00\""
@@ -146,6 +154,11 @@ instance ToLLVM Code where
   toLLVM FunFooter = "}"
   toLLVM (Comment s) = "; " ++ s
   toLLVM Blank = ""
+
+initialValue :: Type -> String
+initialValue Abs.Int  = "0"
+initialValue Abs.Doub = "0.0"
+initialValue Abs.Bool = "0"
 
 addOpWithPrefix :: Abs.AddOp -> Type -> String
 addOpWithPrefix op t = arithPrefix t ++ toLLVM op
