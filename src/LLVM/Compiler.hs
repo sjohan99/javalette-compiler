@@ -1,6 +1,5 @@
 {-# OPTIONS_GHC -Wno-unused-imports #-} -- Turn off unused import warning off in stub
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE FlexibleContexts #-}
 
 -- | Compiler for C--, producing symbolic JVM assembler.
@@ -9,7 +8,6 @@ module LLVM.Compiler (
   compile
 ) where
 
-import Control.Monad
 import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.RWS
@@ -101,10 +99,10 @@ combine' = foldr f ([], [])
 indent :: String -> String
 indent s
   | null s = s
-  | "lab" `isPrefixOf` s && last s == ':' = s
+  | "lab" `isPrefixOf` s && last s == ':' = "\t" ++ s
   | "}" `isPrefixOf` s = s
   | "define" `isPrefixOf` s = s
-  | otherwise = "\t" ++ s
+  | otherwise = "\t\t" ++ s
 
 compileDef :: Sig -> (TopDef, Int) -> ([String], [Code])
 compileDef sig0 (def@(FnDef t id args ss), i) = (
@@ -112,7 +110,7 @@ compileDef sig0 (def@(FnDef t id args ss), i) = (
   , stringConsts st
   )
   where
-   st = execState (compileFun id t args ss) $ initSt sig0 i
+   st = execState (compileFun def) $ initSt sig0 i
    fun = Fun id $ funType def
 
 cleanEmptyLabels :: [Code] -> [Code]
@@ -132,26 +130,22 @@ cleanDeadCode (c:cs) = c : cleanDeadCode cs
 clean :: [Code] -> [Code]
 clean = cleanEmptyLabels . reverse . cleanDeadCode
 
-compileFun :: Ident -> Type -> [Arg] -> [Stmt] -> Compile ()
-compileFun id t args [] = do
-  emit $ FunHeader id t args
-  l <- newLabel
-  emit $ Label l
-  mapM_ compileStmt [VRet] -- Add return void statement if not present
-  emit FunFooter
-
-compileFun id t args ss = do
+compileFun :: TopDef -> Compile ()
+compileFun (FnDef t id args ss) = do
   emit $ FunHeader id t args
   l <- newLabel
   emit $ Label l
   regs <- createArgRegisters args
   mapDeclsToNewVars regs args
-  case (t, last ss) of
-    (_, Ret _ _)  -> mapM_ compileStmt ss
-    (_, VRet)     -> mapM_ compileStmt ss
-    (Abs.Void, _) -> mapM_ compileStmt (ss ++ [VRet]) -- Add return void statement if not present
-    _             -> mapM_ compileStmt ss
+  case (t, lastStmt ss) of
+    (_, [])        -> mapM_ compileStmt [VRet]
+    (_, [Ret _ _]) -> mapM_ compileStmt ss
+    (_, [VRet])    -> mapM_ compileStmt ss
+    (Abs.Void, _)  -> mapM_ compileStmt (ss ++ [VRet]) -- Add return void statement if not present
+    _              -> mapM_ compileStmt ss
   emit FunFooter
+  where lastStmt [] = []
+        lastStmt ss = [last ss]
 
 mapDeclsToNewVars :: [Reg] -> [Arg] -> Compile ()
 mapDeclsToNewVars regs args = mapM_ f (zip args regs)
@@ -269,8 +263,6 @@ compileStmt s0 = do
       compileExpr e
       return ()
 
-    s -> error $ "unimplemented: " ++ printTree (stmToAbs s)
-
 compileExpr :: Expr -> Compile Reg
 compileExpr = \case
 
@@ -383,8 +375,6 @@ compileExpr = \case
     r4 <- newRegister
     emit $ Load t r4 r1
     return r4
-
-  e -> error $ "unimplemented: " ++ printTree (expToAbs e)
 
 compileLiteral :: Expr -> Type -> Compile Reg
 compileLiteral e t = do
