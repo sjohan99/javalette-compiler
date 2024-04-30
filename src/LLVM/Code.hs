@@ -94,31 +94,31 @@ instance ToLLVM Expr where
 data Code
   = Load Type Reg Reg -- ^ Load value from second register to first register.
   | BrCond Expr Reg Label Label -- ^ Branch to 1st label if register is true, otherwise branch to 2nd label.
-  | Br Label
-  | Label Label
-  | Alloca Reg Type
-  | StoreInt Integer Reg
-  | StoreDouble Double Reg
-  | StoreBool Bool Reg
-  | Store Type Reg Reg -- ^ Store value of r1 in memory location r2.
-  | Add Reg Type Reg Abs.AddOp Reg
-  | Mul Reg Type Reg Abs.MulOp Reg
-  | Rel Reg Abs.RelOp Type Reg Reg
+  | Br Label -- ^ Branch to label.
+  | Label Label -- ^ Define label.
+  | Alloca Reg Type -- ^ Allocate memory on stack, address stored in register.
+  | StoreInt Integer Reg -- ^ Store integer at address given by register.
+  | StoreDouble Double Reg -- ^ Store double at address given by register.
+  | StoreBool Bool Reg -- ^ Store boolean at address given by register.
+  | Store Type Reg Reg -- ^ Store value of 1st register in memory location of 2nd register.
+  | Add Reg Type Reg Abs.AddOp Reg -- ^ Add values of 2nd and 3rd register with result in 1st register.
+  | Mul Reg Type Reg Abs.MulOp Reg -- ^ Multiply values of 2nd and 3rd register with result in 1st register.
+  | Rel Reg Type Reg Abs.RelOp Reg -- ^ Compare values of 2nd and 3rd register with result in 1st register.
   | Inc Type Reg Reg -- ^ Add 1 to value of the second register with result in the first register.
   | Dec Type Reg Reg -- ^ Subtract 1 from value of r2 with result in r1.
-  | Negate Reg Type Reg
-  | Call Reg Fun [Reg]
-  | Return Type Reg
-  | ReturnVoid
+  | Negate Reg Type Reg -- ^ Negate value of r2 with result in r1.
+  | Call Reg Fun [Reg] -- ^ Call function with result stored in 1st register.
+  | Return Type Reg -- ^ Return value in the register.
+  | ReturnVoid -- ^ Return void.
   | Initialize Reg Type -- ^ Initialize register with default value.
-  | LogicalNot Type Reg Reg
-  | Unreachable
-  | FunHeader Ident Type [Abs.Arg]
-  | FunFooter
-  | Comment String
-  | StringConst StrConst String
-  | LoadStr Reg StrConst String
-  | Blank
+  | LogicalNot Type Reg Reg -- ^ Invert boolean value in 2nd register with result in 1st register.
+  | Unreachable -- ^ Unreachable instruction.
+  | FunHeader Ident Type [Abs.Arg] -- ^ Define function i.e "define rtype @id(args...) {"
+  | FunFooter -- ^ End of function: "}"
+  | Comment String -- ^ Make a comment in the code from the string.
+  | StringConst StrConst String -- ^ Define a string constant.
+  | LoadStr Reg StrConst String -- ^ Load string constant into register.
+  | Blank -- ^ Blank line.
 
 instance ToLLVM Code where
   toLLVM (Load t r1 r2) = toLLVM r1 ++ " = load " ++ toLLVM t ++ ", " ++ toLLVM t ++ "* " ++ toLLVM r2
@@ -132,8 +132,8 @@ instance ToLLVM Code where
   toLLVM (Store t r1 r2) = "store " ++ toLLVM t ++ " " ++ toLLVM r1 ++ ", " ++ toLLVM t ++ "* " ++ toLLVM r2
   toLLVM (Add r1 t r2 op r3) = toLLVM r1 ++ " = " ++ addOpWithPrefix op t ++ " " ++ toLLVM t ++ " " ++ toLLVM r2 ++ ", " ++ toLLVM r3
   toLLVM (Mul r1 t r2 op r3) = toLLVM r1 ++ " = " ++ mulOpWithPrefix op t ++ " " ++ toLLVM t ++ " " ++ toLLVM r2 ++ ", " ++ toLLVM r3
-  toLLVM (Rel r1 op t@Abs.Doub r2 r3) = toLLVM r1 ++ " = fcmp " ++ doubRelOp op ++ " " ++ toLLVM t ++ " " ++ toLLVM r2 ++ ", " ++ toLLVM r3
-  toLLVM (Rel r1 op t r2 r3) = toLLVM r1 ++ " = icmp " ++ intRelOp op ++ " " ++ toLLVM t ++ " " ++ toLLVM r2 ++ ", " ++ toLLVM r3
+  toLLVM (Rel r1 t@Abs.Doub r2 op r3) = toLLVM r1 ++ " = fcmp " ++ doubRelOp op ++ " " ++ toLLVM t ++ " " ++ toLLVM r2 ++ ", " ++ toLLVM r3
+  toLLVM (Rel r1 t r2 op r3) = toLLVM r1 ++ " = icmp " ++ intRelOp op ++ " " ++ toLLVM t ++ " " ++ toLLVM r2 ++ ", " ++ toLLVM r3
   toLLVM (Inc t@Abs.Doub r1 r2) = toLLVM r1 ++ " = fadd " ++ toLLVM t ++ " " ++ toLLVM r2 ++ ", 1.0"
   toLLVM (Inc t r1 r2) = toLLVM r1 ++ " = add " ++ toLLVM t ++ " " ++ toLLVM r2 ++ ", 1"
   toLLVM (Dec t@Abs.Doub r1 r2) = toLLVM r1 ++ " = fsub " ++ toLLVM t ++ " " ++ toLLVM r2 ++ ", 1.0"

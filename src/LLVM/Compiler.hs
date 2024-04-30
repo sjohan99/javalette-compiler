@@ -304,7 +304,7 @@ compileExpr = \case
     r1 <- newRegister
     r2 <- compileExpr e1
     r3 <- compileExpr e2
-    emit $ Rel r1 op t r2 r3
+    emit $ Rel r1 t r2 op r3
     return r1
 
   Neg t e -> do
