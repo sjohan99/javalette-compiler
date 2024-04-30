@@ -27,13 +27,8 @@ import LLVM.Translator
 import Javalette.Print (printTree)
 
 type Sig = Map Ident Fun
-
--- Local variables
-
 type Cxt      = [CxtBlock]
 type CxtBlock = [(Ident, (Reg, Type))]
-
--- State
 
 data St = St
   { sig :: Sig -- ^ Function signatures
@@ -163,56 +158,57 @@ compileItem t = \case
     r1 <- newVar id t
     emit $ Store t r2 r1
 
+compileIncDec :: Stmt -> Compile ()
+compileIncDec s = do
+  varPtr <- lookupRegister id
+  oldVal <- newRegister
+  emit $ Load t oldVal varPtr
+  newVal <- newRegister
+  emit $ op t newVal oldVal
+  emit $ Store t newVal varPtr
+  where
+    (t, id, op) = case s of
+      Incr t id -> (t, id, Inc)
+      Decr t id -> (t, id, Dec)
+      _ -> error "compileIncDec: not an increment or decrement"
+  
+
 compileStmt :: Stmt -> Compile ()
-compileStmt s0 = do
+compileStmt s = do
 
   -- Output a comment with the statement to compile
-  let top = printTree $ stmToAbs s0
+  let top = printTree $ stmToAbs s
   unless (null top) $ do
     blank
     mapM_ comment $ lines top
 
   -- Compile the statement
-  case s0 of
+  case s of
     Empty -> return ()
 
     Ret t e -> do
       r <- compileExpr e
       emit $ Return t r
 
-    VRet -> do
-      emit ReturnVoid
+    VRet -> emit ReturnVoid
 
-    Decl t items -> do
-      mapM_ (compileItem t) items
+    Decl t items -> mapM_ (compileItem t) items
 
     Ass t id e -> do
       r1 <- compileExpr e
-      (r2, _) <- lookupRegister id
+      r2 <- lookupRegister id
       emit $ Store t r1 r2
 
-    Incr t id -> do
-      (r1, _) <- lookupRegister id
-      rx <- newRegister
-      emit $ Load t rx r1
-      r2 <- newRegister
-      emit $ Inc t r2 rx
-      emit $ Store t r2 r1
+    s@(Incr _ _) -> compileIncDec s
 
-    Decr t id -> do
-      (r1, _) <- lookupRegister id
-      rx <- newRegister
-      emit $ Load t rx r1
-      r2 <- newRegister
-      emit $ Dec t r2 rx
-      emit $ Store t r2 r1
+    s@(Decr _ _) -> compileIncDec s
       
     CondElse e s1 s2 -> do
-      r <- compileExpr e
+      bool <- compileExpr e
       trueLabel  <- newLabel
       falseLabel <- newLabel
       doneLabel <- newLabel
-      emit $ BrCond e r trueLabel falseLabel
+      emit $ BrCond bool trueLabel falseLabel
       emit $ Label trueLabel
       inNewBlock $ compileStmt s1
       emit $ Br doneLabel
@@ -222,10 +218,10 @@ compileStmt s0 = do
       emit $ Label doneLabel
 
     Cond e s -> do
-      r <- compileExpr e
+      bool <- compileExpr e
       trueLabel <- newLabel
       doneLabel <- newLabel
-      emit $ BrCond e r trueLabel doneLabel
+      emit $ BrCond bool trueLabel doneLabel
       emit $ Label trueLabel
       inNewBlock $ compileStmt s
       emit $ Br doneLabel
@@ -235,18 +231,14 @@ compileStmt s0 = do
       checkCondLabel <- newLabel
       loopLabel <- newLabel
       exitLabel <- newLabel
-
       emit $ Br checkCondLabel
       emit $ Label checkCondLabel
-      r1 <- compileExpr e
-      emit $ BrCond e r1 loopLabel exitLabel
-
+      bool <- compileExpr e
+      emit $ BrCond bool loopLabel exitLabel
       emit $ Label loopLabel
       inNewBlock $ compileStmt s
       emit $ Br checkCondLabel
-
       emit $ Label exitLabel
-
 
     BStmt ss -> do
       inNewBlock $ mapM_ compileStmt ss
@@ -295,7 +287,7 @@ compileExpr = \case
     return r
 
   EVar t x -> do
-    (r1, _) <- lookupRegister x
+    r1 <- lookupRegister x
     r2 <- newRegister
     emit $ Load t r2 r1
     return r2
@@ -323,18 +315,15 @@ compileExpr = \case
     e1TrueLabel <- newLabel
     e1FalseLabel <- newLabel
     doneLabel <- newLabel
-
     r1 <- newRegister
     emit $ Alloca r1 t
 
-    -- check the first expression
     r2 <- compileExpr e1
-    emit $ BrCond e1 r2 e1TrueLabel e1FalseLabel
+    emit $ BrCond r2 e1TrueLabel e1FalseLabel
     emit $ Label e1TrueLabel
     emit $ StoreBool True r1
     emit $ Br doneLabel
 
-    -- check the second expression, iff the first is false
     emit $ Label e1FalseLabel
     r3 <- compileExpr e2
     emit $ Store t r3 r1
@@ -352,7 +341,7 @@ compileExpr = \case
     r1 <- newRegister
     emit $ Alloca r1 t
     r2 <- compileExpr e1
-    emit $ BrCond e1 r2 e1TrueLabel e1FalseLabel
+    emit $ BrCond r2 e1TrueLabel e1FalseLabel
 
     emit $ Label e1TrueLabel
     r3 <- compileExpr e2
@@ -415,12 +404,12 @@ newVar x t = do
   modify $ \st@St{ cxt = (b:bs) } -> st { cxt = ((x,(r, t)) : b) : bs }
   return r
 
-lookupRegister :: Ident -> Compile (Reg, Type)
+lookupRegister :: Ident -> Compile Reg
 lookupRegister x = loop . concat <$> gets cxt
   where
   loop [] = error $ "unbound variable: " ++ printTree x
   loop ((y,(r,t)) : bs)
-    | x == y    = (r, t)
+    | x == y    = r
     | otherwise = loop bs
 
 lookupFun :: Ident -> Compile Fun
