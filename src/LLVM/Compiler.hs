@@ -135,10 +135,9 @@ compileFun (FnDef t id args ss) = do
   emit $ FunHeader id t args
   l <- newLabel
   emit $ Label l
-  regs <- createArgRegisters args
-  mapDeclsToNewVars regs args
+  mapArgsToNewRegisters args
   case (t, lastStmt ss) of
-    (_, [])        -> mapM_ compileStmt [VRet]
+    (_, [])        -> mapM_ compileStmt [VRet] -- Add return void statement for empty (void) functions
     (_, [Ret _ _]) -> mapM_ compileStmt ss
     (_, [VRet])    -> mapM_ compileStmt ss
     (Abs.Void, _)  -> mapM_ compileStmt (ss ++ [VRet]) -- Add return void statement if not present
@@ -147,19 +146,12 @@ compileFun (FnDef t id args ss) = do
   where lastStmt [] = []
         lastStmt ss = [last ss]
 
-mapDeclsToNewVars :: [Reg] -> [Arg] -> Compile ()
-mapDeclsToNewVars regs args = mapM_ f (zip args regs)
-  where f (Argument t x, r) = do
-          r' <- newVar x t
-          emit $ Store t r r'
-
-createArgRegisters :: [Arg] -> Compile [Reg]
-createArgRegisters = mapM (\(Argument t x) -> newRegister)
-
-compileArg :: Arg -> Compile ()
-compileArg (Argument t x) = do
-  r <- newVar x t
-  emit $ Store t r r
+mapArgsToNewRegisters :: [Arg] -> Compile ()
+mapArgsToNewRegisters args = do
+  regs <- replicateM (length args) newRegister
+  mapM_ (\(Argument t x, r) -> do
+    r' <- newVar x t
+    emit $ Store t r r') (zip args regs)
 
 compileItem :: Type -> Item -> Compile ()
 compileItem t = \case
