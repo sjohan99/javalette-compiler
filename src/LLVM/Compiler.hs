@@ -18,7 +18,6 @@ import           FunType
 import qualified Javalette.Abs as Abs
 import           Javalette.Abs (Ident(..), Type, Arg(..))
 import           LLVM.Code
-import           LLVM.Translator
 import           Javalette.Print (printTree)
 
 type Sig      = Map Ident Fun

@@ -12,20 +12,7 @@ tested-with:
   GHC == 9.4.8
 
 build-type:         Simple
--- build-type:         Custom
--- custom-setup
---   setup-depends:
---     , Cabal   >= 2.0   && < 4
---         -- Distribution.Simple.BuildPaths.autogenPackageModulesDir is new in Cabal-2.0
---     , base    >= 4.10  && < 5
---         -- Restrict to GHC >= 8.2 which ships Cabal-2.0 (otherwise Cabal has to be reinstalled)
---     , process
---     -- Adding BNFC here does not help because that only provides the BNFC _library_,
---     -- not the _executable that_ we call from 'Setup.hs'.
---     -- , BNFC    >= 2.8.4 && < 2.10
 
-
--- Extra doc files to be distributed with the package, such as a CHANGELOG or a README.
 extra-source-files:
   Javalette.cf
 
@@ -41,7 +28,6 @@ library compiler
       Javalette.Lex
       Javalette.Print
       LLVM.Code
-      LLVM.Translator
     autogen-modules:
       Javalette.Abs
       Javalette.Lex
