@@ -1,20 +1,18 @@
 {-# LANGUAGE LambdaCase #-}
 module LLVM.Code where
 
-import Data.List (intercalate)
-import Numeric (showHex)
-
+import           Data.List (intercalate)
+import           Numeric (showHex)
+import           Data.Char (toUpper, isAsciiLower)
 import qualified Annotated as A
-import Annotated (TopDef(..), Expr)
-import Javalette.Abs (Ident(..), Type)
+import           Annotated (TopDef(..), Expr)
+import           Javalette.Abs (Ident(..), Type)
 import qualified Javalette.Abs as Abs
-import FunType
-import Data.Char (toUpper, isAsciiLower)
+import           FunType
 
 newtype Label = L Int
 newtype Reg = R Int
-newtype StrConst = S (Int, Int)
-type Addr  = Int
+newtype StrConst = S Int
 
 data Fun = Fun Ident FunType
   deriving (Show)
@@ -29,7 +27,7 @@ instance ToLLVM Label where
   toLLVM (L i) = "%lab" ++ show i
 
 instance ToLLVM StrConst where
-  toLLVM (S (i, j)) = "@.str" ++ show i ++ "." ++ show j
+  toLLVM (S i) = "@.str" ++ show i
 
 instance ToLLVM Ident where
   toLLVM (Ident s) = s

@@ -1,57 +1,50 @@
-{-# OPTIONS_GHC -Wno-unused-imports #-} -- Turn off unused import warning off in stub
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE FlexibleContexts #-}
-
--- | Compiler for C--, producing symbolic JVM assembler.
 
 module LLVM.Compiler (
   compile
 ) where
 
-import Control.Monad.Reader
-import Control.Monad.State
-import Control.Monad.RWS
-
-import Data.Maybe
-import Data.Map (Map)
-import Data.List (isPrefixOf)
+import           Control.Monad.Reader
+import           Control.Monad.State
+import           Control.Monad.RWS
+import           Control.Monad (mapM_)
+import           Data.Maybe
+import           Data.Map (Map)
+import           Data.List (isPrefixOf)
 import qualified Data.Map as Map
-
-import Annotated
-import FunType
-import Control.Monad (mapM_)
+import           Annotated
+import           FunType
 import qualified Javalette.Abs as Abs
-import Javalette.Abs (Ident(..), Type, Arg(..))
-import LLVM.Code
-import LLVM.Translator
-import Javalette.Print (printTree)
+import           Javalette.Abs (Ident(..), Type, Arg(..))
+import           LLVM.Code
+import           LLVM.Translator
+import           Javalette.Print (printTree)
 
-type Sig = Map Ident Fun
+type Sig      = Map Ident Fun
 type Cxt      = [CxtBlock]
 type CxtBlock = [(Ident, (Reg, Type))]
 
 data St = St
-  { sig :: Sig -- ^ Function signatures
-  , cxt :: Cxt -- ^ Context
+  { cxt :: Cxt -- ^ Context
   , nextRegister :: Reg -- ^ Next register index.
   , nextLabel :: Label -- ^ Next jump label
-  , nextString :: StrConst -- ^ Next string index
-  , output :: Output -- ^ Reversed code list (last instruction at front)
+  , output :: [Code] -- ^ Reversed code list (last instruction at front)
+  , sig :: Sig
   , stringConsts :: [Code]
+  , nextString :: StrConst
   }
 
-initSt :: Sig -> Int -> St
-initSt s strIdx = St
-  { sig = s
-  , cxt = [[]]
+initSt :: Sig -> St
+initSt s = St {
+    cxt = [[]]
   , nextRegister = R 0
   , nextLabel = L 0
-  , nextString = S (strIdx, 0)
   , output = []
+  , sig = s
   , stringConsts = []
+  , nextString = S 0
   }
-
-type Output = [Code]
 
 type Compile = State St
 
@@ -69,10 +62,13 @@ compile
   :: Prog -- ^ Type-annotated program.
   -> String  -- ^ Generated llvm source file content.
 compile (Program defs) =
-  unlines header ++ unlines (combine (map (compileDef sig0) (zip defs [0..])))
+  unlines header ++ unlines (strings ++ code)
   where
   sig0 = Map.fromList $ builtin ++ map sigEntry defs
   sigEntry def@(FnDef _ id _ _) = (id, Fun id (funType def))
+  st = execState (mapM_ compileFun defs) $ initSt sig0
+  strings = map toLLVM (stringConsts st)
+  code = map (indent . toLLVM) $ clean $ output st
   header = [
       "declare void @printInt(i32)"
     , "declare void @printDouble(double)"
@@ -81,15 +77,6 @@ compile (Program defs) =
     , "declare double @readDouble()"
     ]
 
-combine :: [([String], [Code])] -> [String]
-combine sc = map toLLVM cs ++ ss
-  where (ss, cs) = combine' sc
-
-combine' :: [([String], [Code])] -> ([String], [Code])
-combine' = foldr f ([], [])
-  where
-  f (ss, cs) (ss', cs') = (ss ++ ss', cs ++ cs')
-
 -- | Indent non-empty lines.
 indent :: String -> String
 indent s
@@ -97,16 +84,7 @@ indent s
   | "lab" `isPrefixOf` s && last s == ':' = "\t" ++ s
   | "}" `isPrefixOf` s = s
   | "define" `isPrefixOf` s = s
-  | otherwise = "\t\t" ++ s
-
-compileDef :: Sig -> (TopDef, Int) -> ([String], [Code])
-compileDef sig0 (def@(FnDef t id args ss), i) = (
-    map (indent . toLLVM) $ clean $ output st
-  , stringConsts st
-  )
-  where
-   st = execState (compileFun def) $ initSt sig0 i
-   fun = Fun id $ funType def
+  | otherwise = "\t" ++ s
 
 cleanEmptyLabels :: [Code] -> [Code]
 cleanEmptyLabels [] = []
@@ -127,6 +105,7 @@ clean = cleanEmptyLabels . reverse . cleanDeadCode
 
 compileFun :: TopDef -> Compile ()
 compileFun (FnDef t id args ss) = do
+  resetLocalState
   emit $ FunHeader id t args
   l <- newLabel
   emit $ Label l
@@ -171,19 +150,9 @@ compileIncDec s = do
       Incr t id -> (t, id, Inc)
       Decr t id -> (t, id, Dec)
       _ -> error "compileIncDec: not an increment or decrement"
-  
 
 compileStmt :: Stmt -> Compile ()
-compileStmt s = do
-
-  -- Output a comment with the statement to compile
-  let top = printTree $ stmToAbs s
-  unless (null top) $ do
-    blank
-    mapM_ comment $ lines top
-
-  -- Compile the statement
-  case s of
+compileStmt = \case
     Empty -> return ()
 
     Ret t e -> do
@@ -385,8 +354,8 @@ newLabel = do
 
 newString :: Compile StrConst
 newString = do
-  s@(S (i, j)) <- gets nextString
-  modify $ \st -> st { nextString = S (i, succ j) }
+  s@(S i) <- gets nextString
+  modify $ \st -> st { nextString = S (succ i) }
   return s
 
 inNewBlock :: Compile a -> Compile a
@@ -416,6 +385,10 @@ lookupFun :: Ident -> Compile Fun
 lookupFun x = do
   m <- gets sig
   return $ Map.findWithDefault (error $ "unknown function " ++ printTree x) x m
+
+resetLocalState :: Compile ()
+resetLocalState = do
+  modify $ \st -> st { nextRegister = R 0, nextLabel = L 0, cxt = [[]]}
 
 emit :: Code -> Compile ()
 emit (StringConst sid s) = do
