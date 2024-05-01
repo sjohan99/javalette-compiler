@@ -28,5 +28,7 @@ clean :
 	-find src/Javalette/* -type f -not -name 'Par.hs' -not -name 'Lex.hs' -not -name 'Print.hs' -not -name 'Abs.hs' -delete
 	-rm -rf src/dist-newstyle
 	-rm -f src/*.o src/*.hi
-	-rm -f src/app/*.o src/*.hi
+	-rm -f src/app/*.o src/app/*.hi
+	-rm -f src/LLVM/*.o src/LLVM/*.hi
+	-rm -f lib/runtime.bc
 	-rm -f jlc debugjlc
