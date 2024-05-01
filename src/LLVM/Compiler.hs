@@ -57,25 +57,27 @@ builtin =
   , (Ident "printString", Fun (Ident "printString") (FunType Abs.Void   [Abs.Str]))
   ]
 
+externals :: [String]
+externals = [
+    "declare void @printInt(i32)"
+  , "declare void @printDouble(double)"
+  , "declare void @printString(i8*)"
+  , "declare i32 @readInt()"
+  , "declare double @readDouble()"
+  ]
+
 -- | Entry point.
 compile
   :: Prog -- ^ Type-annotated program.
   -> String  -- ^ Generated llvm source file content.
 compile (Program defs) =
-  unlines header ++ unlines (strings ++ code)
+  unlines externals ++ unlines (strings ++ code)
   where
   sig0 = Map.fromList $ builtin ++ map sigEntry defs
   sigEntry def@(FnDef _ id _ _) = (id, Fun id (funType def))
   st = execState (mapM_ compileFun defs) $ initSt sig0
   strings = map toLLVM (stringConsts st)
   code = map (indent . toLLVM) $ clean $ output st
-  header = [
-      "declare void @printInt(i32)"
-    , "declare void @printDouble(double)"
-    , "declare void @printString(i8*)"
-    , "declare i32 @readInt()"
-    , "declare double @readDouble()"
-    ]
 
 -- | Indent non-empty lines.
 indent :: String -> String
