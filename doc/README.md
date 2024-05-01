@@ -15,7 +15,7 @@ Run the compiler by calling the `jlc` executable, the compiler will then wait fo
 The outcome is written to stderr and are the following:
 - ERROR: Syntax error: \<explanation\>. There was a syntax error.
 - ERROR: Type error: \<explanation\>. There an error during typechecking.
-- OK. If the program has no syntax or type error.
+- OK. If the program has no syntax or type error, the resulting LLVM IR will then be written to stdout.
 
 ### Options
 There are no options as of now
