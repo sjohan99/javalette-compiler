@@ -74,7 +74,9 @@ ELitTrue.  Expr6 ::= "true" ;
 
 ELitFalse. Expr6 ::= "false" ;
 
-EApp.      Expr6 ::= Ident "(" [Expr] ")" ;
+FnCall.    FnCall ::= Ident "(" [Expr] ")" ;
+
+EApp.      Expr6 ::= FnCall ;
 
 EString.   Expr6 ::= String ;
 
@@ -119,6 +121,28 @@ GE.        RelOp ::= ">=" ;
 EQU.       RelOp ::= "==" ;
 
 NE.        RelOp ::= "!=" ;
+
+-- arrays --------------------------------------------------
+
+Indexed.   Indexed ::= Expr6 IndexOp ;
+
+IndexOp.   IndexOp ::= "[" Expr "]" ;
+
+Arr.       Type ::= Type "[]" ;
+
+AssArr.    Stmt ::= Indexed "=" Expr  ";" ;
+
+AssValArr. Stmt ::= FnCall IndexOp "=" Expr  ";" ;
+
+ENewArr.   Expr6 ::= "new" Type IndexOp ;
+
+EIndexed.  Expr6 ::= Indexed ;
+
+EValIdx.   Expr6 ::= FnCall IndexOp ;
+
+ELen.      Expr5 ::= Expr6 "." Ident ;
+
+For.       Stmt ::= "for" "(" Type Ident ":" Expr ")" Stmt ;
 
 -- comments ------------------------------------------------
 

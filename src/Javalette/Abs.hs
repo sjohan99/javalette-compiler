@@ -32,12 +32,16 @@ data Stmt
     | CondElse Expr Stmt Stmt
     | While Expr Stmt
     | SExp Expr
+    | AssArr Indexed Expr
+    | AssValArr FnCall IndexOp Expr
+    | For Type Ident Expr Stmt
   deriving (C.Eq, C.Ord, C.Show, C.Read)
 
 data Item = NoInit Ident | Init Ident Expr
   deriving (C.Eq, C.Ord, C.Show, C.Read)
 
-data Type = Int | Doub | Bool | Void | Str | Fun Type [Type]
+data Type
+    = Int | Doub | Bool | Void | Str | Fun Type [Type] | Arr Type
   deriving (C.Eq, C.Ord, C.Show, C.Read)
 
 data Expr
@@ -46,7 +50,7 @@ data Expr
     | ELitDoub Double
     | ELitTrue
     | ELitFalse
-    | EApp Ident [Expr]
+    | EApp FnCall
     | EString String
     | Neg Expr
     | Not Expr
@@ -55,6 +59,13 @@ data Expr
     | ERel Expr RelOp Expr
     | EAnd Expr Expr
     | EOr Expr Expr
+    | ENewArr Type IndexOp
+    | EIndexed Indexed
+    | EValIdx FnCall IndexOp
+    | ELen Expr Ident
+  deriving (C.Eq, C.Ord, C.Show, C.Read)
+
+data FnCall = FnCall Ident [Expr]
   deriving (C.Eq, C.Ord, C.Show, C.Read)
 
 data AddOp = Plus | Minus
@@ -64,6 +75,12 @@ data MulOp = Times | Div | Mod
   deriving (C.Eq, C.Ord, C.Show, C.Read)
 
 data RelOp = LTH | LE | GTH | GE | EQU | NE
+  deriving (C.Eq, C.Ord, C.Show, C.Read)
+
+data Indexed = Indexed Expr IndexOp
+  deriving (C.Eq, C.Ord, C.Show, C.Read)
+
+data IndexOp = IndexOp Expr
   deriving (C.Eq, C.Ord, C.Show, C.Read)
 
 newtype Ident = Ident String

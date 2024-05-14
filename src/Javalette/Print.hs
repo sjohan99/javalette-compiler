@@ -179,6 +179,9 @@ instance Print Javalette.Abs.Stmt where
     Javalette.Abs.CondElse expr stmt1 stmt2 -> prPrec i 0 (concatD [doc (showString "if"), doc (showString "("), prt 0 expr, doc (showString ")"), prt 0 stmt1, doc (showString "else"), prt 0 stmt2])
     Javalette.Abs.While expr stmt -> prPrec i 0 (concatD [doc (showString "while"), doc (showString "("), prt 0 expr, doc (showString ")"), prt 0 stmt])
     Javalette.Abs.SExp expr -> prPrec i 0 (concatD [prt 0 expr, doc (showString ";")])
+    Javalette.Abs.AssArr indexed expr -> prPrec i 0 (concatD [prt 0 indexed, doc (showString "="), prt 0 expr, doc (showString ";")])
+    Javalette.Abs.AssValArr fncall indexop expr -> prPrec i 0 (concatD [prt 0 fncall, prt 0 indexop, doc (showString "="), prt 0 expr, doc (showString ";")])
+    Javalette.Abs.For type_ id_ expr stmt -> prPrec i 0 (concatD [doc (showString "for"), doc (showString "("), prt 0 type_, prt 0 id_, doc (showString ":"), prt 0 expr, doc (showString ")"), prt 0 stmt])
 
 instance Print Javalette.Abs.Item where
   prt i = \case
@@ -198,6 +201,7 @@ instance Print Javalette.Abs.Type where
     Javalette.Abs.Void -> prPrec i 0 (concatD [doc (showString "void")])
     Javalette.Abs.Str -> prPrec i 0 (concatD [doc (showString "string")])
     Javalette.Abs.Fun type_ types -> prPrec i 0 (concatD [prt 0 type_, doc (showString "("), prt 0 types, doc (showString ")")])
+    Javalette.Abs.Arr type_ -> prPrec i 0 (concatD [prt 0 type_, doc (showString "[]")])
 
 instance Print [Javalette.Abs.Type] where
   prt _ [] = concatD []
@@ -211,7 +215,7 @@ instance Print Javalette.Abs.Expr where
     Javalette.Abs.ELitDoub d -> prPrec i 6 (concatD [prt 0 d])
     Javalette.Abs.ELitTrue -> prPrec i 6 (concatD [doc (showString "true")])
     Javalette.Abs.ELitFalse -> prPrec i 6 (concatD [doc (showString "false")])
-    Javalette.Abs.EApp id_ exprs -> prPrec i 6 (concatD [prt 0 id_, doc (showString "("), prt 0 exprs, doc (showString ")")])
+    Javalette.Abs.EApp fncall -> prPrec i 6 (concatD [prt 0 fncall])
     Javalette.Abs.EString str -> prPrec i 6 (concatD [printString str])
     Javalette.Abs.Neg expr -> prPrec i 5 (concatD [doc (showString "-"), prt 6 expr])
     Javalette.Abs.Not expr -> prPrec i 5 (concatD [doc (showString "!"), prt 6 expr])
@@ -220,6 +224,14 @@ instance Print Javalette.Abs.Expr where
     Javalette.Abs.ERel expr1 relop expr2 -> prPrec i 2 (concatD [prt 2 expr1, prt 0 relop, prt 3 expr2])
     Javalette.Abs.EAnd expr1 expr2 -> prPrec i 1 (concatD [prt 2 expr1, doc (showString "&&"), prt 1 expr2])
     Javalette.Abs.EOr expr1 expr2 -> prPrec i 0 (concatD [prt 1 expr1, doc (showString "||"), prt 0 expr2])
+    Javalette.Abs.ENewArr type_ indexop -> prPrec i 6 (concatD [doc (showString "new"), prt 0 type_, prt 0 indexop])
+    Javalette.Abs.EIndexed indexed -> prPrec i 6 (concatD [prt 0 indexed])
+    Javalette.Abs.EValIdx fncall indexop -> prPrec i 6 (concatD [prt 0 fncall, prt 0 indexop])
+    Javalette.Abs.ELen expr id_ -> prPrec i 5 (concatD [prt 6 expr, doc (showString "."), prt 0 id_])
+
+instance Print Javalette.Abs.FnCall where
+  prt i = \case
+    Javalette.Abs.FnCall id_ exprs -> prPrec i 0 (concatD [prt 0 id_, doc (showString "("), prt 0 exprs, doc (showString ")")])
 
 instance Print [Javalette.Abs.Expr] where
   prt _ [] = concatD []
@@ -245,3 +257,11 @@ instance Print Javalette.Abs.RelOp where
     Javalette.Abs.GE -> prPrec i 0 (concatD [doc (showString ">=")])
     Javalette.Abs.EQU -> prPrec i 0 (concatD [doc (showString "==")])
     Javalette.Abs.NE -> prPrec i 0 (concatD [doc (showString "!=")])
+
+instance Print Javalette.Abs.Indexed where
+  prt i = \case
+    Javalette.Abs.Indexed expr indexop -> prPrec i 0 (concatD [prt 6 expr, prt 0 indexop])
+
+instance Print Javalette.Abs.IndexOp where
+  prt i = \case
+    Javalette.Abs.IndexOp expr -> prPrec i 0 (concatD [doc (showString "["), prt 0 expr, doc (showString "]")])

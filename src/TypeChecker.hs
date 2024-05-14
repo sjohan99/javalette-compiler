@@ -119,7 +119,7 @@ checkStmt = \case
 
     SExp e -> do
         case e of
-            EApp _ _ -> do
+            EApp  _ -> do
                 (t, e') <- inferExp e
                 return $ A.SExp t e'
             _ -> throwError $ fmt ["Non-void expressions except for function calls are not allowed:", pt e]
@@ -131,6 +131,24 @@ checkStmt = \case
                 return $ A.Ass t id e'
             else
                 throwError $ fmt ["Type mismatch:", pt e, ". Expected", pt t', ", got", pt t]
+
+    AssArr l@(Indexed e (IndexOp e1)) e2 -> do
+        (t, e') <- inferExp e
+        (indexType, e1') <- inferExp e1
+        (valueType, e2') <- inferExp e2
+        unless (t == Arr valueType) $ throwError $ fmt ["Type mismatch:", pt l, ". Expected array of type", pt t, " got", pt valueType]
+        unless (indexType == Int) $ throwError $ fmt ["Type mismatch:", pt l, ". Array index expected type", pt Int, ", got", pt indexType]
+        return $ A.AssArr t (A.Indexed e' (A.IndexOp e1')) e2'
+
+    a@(AssValArr fc idxOp e) -> do
+        (t1, fc') <- checkFnCall fc
+        idxOp' <- checkIndexOp idxOp
+        (t2, e') <- inferExp e
+        case t1 of
+            Arr t1' -> do
+                unless (t1' == t2) $ throwError $ fmt ["Type mismatch:", pt a, "Cannot assign value of type", pt t2, "to array element of type", pt t1']
+                return $ A.AssValArr t1 fc' idxOp' e'
+            _ -> throwError $ fmt ["Type mismatch:", pt a, ". Expected array, got", pt t1]
 
     Incr id -> do
         t <- lookupVar id
@@ -186,11 +204,24 @@ checkStmt = \case
         put $ St bs sret
         return $ A.BStmt ss'
 
+    For t id e s -> do
+        (iterableType, e') <- inferExp e
+        case iterableType of
+            Arr t' -> do
+                sret <- gets stRet
+                bs <- gets stCxt
+                put $ St (Map.empty :| toList bs) sret
+                newVar id t'
+                s' <- checkStmt  s
+                put $ St bs sret
+                return $ A.For t id e' s'
+            _ -> throwError $ fmt ["Type mismatch:", pt e, ". Expected array, got", pt iterableType]
+
     where blockify (BStmt ss) = BStmt ss
           blockify ss = BStmt [ss]
 
 checkStmts :: [Stmt] -> Check [A.Stmt]
-checkStmts ss = mapM checkStmt ss
+checkStmts = mapM checkStmt
 
 inferExp :: Expr -> Check (Type, A.Expr)
 inferExp = \case
@@ -206,14 +237,9 @@ inferExp = \case
 
     ELitFalse  -> return (Bool, A.ELitFalse Bool)
 
-    EApp fid es -> do
-        sig <- ask
-        case Map.lookup fid sig of
-            Nothing -> throwError $ fmt ["undefined function:", pt fid]
-            Just (FunType t ts) -> do
-                unless (length ts == length es) $ throwError $ fmt ["function:", pt fid, "expected", show (length ts), "arguments, got", show (length es)]
-                es' <- zipWithM checkExpr es ts
-                return (t, A.EApp t fid es')
+    EApp fc -> do
+        (t, fc') <- checkFnCall fc
+        return (t, A.EApp t fc')
 
     EString s -> return (Str, A.EString Str s)
 
@@ -270,6 +296,54 @@ inferExp = \case
             (Bool, Bool) -> return (Bool, A.EOr Bool e1' e2')
             _                    -> throwError $ fmt ["Type mismatch:", pt e1, "||", pt e2, ". Cannot apply || to", pt t1, "and", pt t2]
 
+    ENewArr t (IndexOp e) -> do
+        (t', e') <- inferExp e
+        unless (t' == Int) $ throwError $ fmt ["Type mismatch:", pt e, ". Expected integer, got", pt t']
+        return (Arr t, A.ENewArr t (A.IndexOp e'))
+
+    EIndexed l@(Indexed e idxOp) -> do
+        (t, e') <- inferExp e
+        idxOp' <- checkIndexOp idxOp
+        case t of
+            Arr t' -> do
+                return (t', A.EIndexed t $ A.Indexed e' idxOp')
+            _ -> throwError $ fmt ["Type mismatch:", pt l, ". Expected array, got", pt t]
+
+    EValIdx fc@(FnCall id es) idxOp -> do
+        (t, fc') <- checkFnCall fc
+        case t of
+            Arr t' -> do
+                idxOp' <- checkIndexOp idxOp
+                return (t', A.EValIdx t' fc' idxOp')
+            t' -> throwError $ fmt ["Type mismatch:", pt fc, ". Expected array, got", pt t]
+
+    expr@(ELen e i@(Ident id)) -> do
+        (t, e') <- inferExp e
+        unless (id == "length") $ throwError $ fmt ["Illegal dot notation:", pt expr, "Type", pt t, "does not have a field", pt id]
+        case t of
+            Arr _ -> return (Int, A.ELen Int e' i)
+            _ -> throwError $ fmt ["Type mismatch:", pt expr, ". Expected array, got", pt t]
+
+checkIndexOp :: IndexOp -> Check A.IndexOp
+checkIndexOp (IndexOp e) = do
+    (t, e') <- inferExp e
+    unless (t == Int) $ throwError $ fmt ["Type mismatch:", pt e, ". Expected integer, got", pt t]
+    return $ A.IndexOp e'
+
+checkFnCall :: FnCall -> Check (Type, A.FnCall)
+checkFnCall (FnCall id es) = do
+    sig <- ask
+    case Map.lookup id sig of
+        Nothing -> throwError $ fmt ["undefined function:", pt id]
+        Just (FunType t ts) -> do
+            unless (length ts == length es) $ throwError $ fmt ["function:", pt id, "expected", show (length ts), "arguments, got", show (length es)]
+            es' <- zipWithM checkExpr es ts
+            return (t, A.FnCall id es')
+
+checkTypeIsArr :: Type -> Check Type
+checkTypeIsArr t = case t of
+    Arr t' -> return t'
+    _ -> throwError $ fmt ["Type mismatch. Expected array, got", pt t]
 
 checkExpr :: Expr -> Type -> Check A.Expr
 checkExpr e t = do
