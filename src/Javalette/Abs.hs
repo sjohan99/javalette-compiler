@@ -33,7 +33,6 @@ data Stmt
     | While Expr Stmt
     | SExp Expr
     | AssArr Indexed Expr
-    | AssValArr FnCall IndexOp Expr
     | For Type Ident Expr Stmt
   deriving (C.Eq, C.Ord, C.Show, C.Read)
 
@@ -50,7 +49,7 @@ data Expr
     | ELitDoub Double
     | ELitTrue
     | ELitFalse
-    | EApp FnCall
+    | EApp Ident [Expr]
     | EString String
     | Neg Expr
     | Not Expr
@@ -62,9 +61,6 @@ data Expr
     | ENewArr Type IndexOp
     | EIndexed Indexed
     | ELen Expr Ident
-  deriving (C.Eq, C.Ord, C.Show, C.Read)
-
-data FnCall = FnCall Ident [Expr]
   deriving (C.Eq, C.Ord, C.Show, C.Read)
 
 data AddOp = Plus | Minus

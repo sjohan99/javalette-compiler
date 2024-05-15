@@ -72,11 +72,9 @@ ELitDoub.  Expr6 ::= Double;
 
 ELitTrue.  Expr6 ::= "true" ;
 
-ELitFalse. Expr6 ::= "false" ;
+ELitFalse. Expr6 ::= "false" ; 
 
-FnCall.    FnCall ::= Ident "(" [Expr] ")" ;
-
-EApp.      Expr6 ::= FnCall ;
+EApp.      Expr6 ::= Ident "(" [Expr] ")" ;
 
 EString.   Expr6 ::= String ;
 
@@ -131,8 +129,6 @@ IndexOp.   IndexOp ::= "[" Expr "]" ;
 Arr.       Type ::= Type "[]" ;
 
 AssArr.    Stmt ::= Indexed "=" Expr  ";" ;
-
-AssValArr. Stmt ::= FnCall IndexOp "=" Expr  ";" ;
 
 ENewArr.   Expr6 ::= "new" Type IndexOp ;
 

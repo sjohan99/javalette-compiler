@@ -24,7 +24,6 @@ data Stmt
     | While Expr Stmt
     | SExp Abs.Type Expr
     | AssArr Abs.Type Indexed Expr
-    | AssValArr Abs.Type FnCall IndexOp Expr
     | For Abs.Type Abs.Ident Expr Stmt
   deriving (C.Eq, C.Ord, C.Show, C.Read)
 
@@ -34,7 +33,7 @@ data Expr
     | ELitDoub Abs.Type C.Double
     | ELitTrue Abs.Type
     | ELitFalse Abs.Type
-    | EApp Abs.Type FnCall
+    | EApp Abs.Type Abs.Ident [Expr]
     | EString Abs.Type C.String
     | Neg Abs.Type Expr
     | Not Abs.Type Expr
@@ -55,7 +54,4 @@ data IndexOp = IndexOp Expr
   deriving (C.Eq, C.Ord, C.Show, C.Read)
 
 data Indexed = Indexed Expr IndexOp
-  deriving (C.Eq, C.Ord, C.Show, C.Read)
-
-data FnCall = FnCall Abs.Ident [Expr]
   deriving (C.Eq, C.Ord, C.Show, C.Read)
