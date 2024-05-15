@@ -45,7 +45,6 @@ data Expr
     | EOr Abs.Type Expr Expr
     | ENewArr Abs.Type IndexOp
     | EIndexed Abs.Type Indexed
-    | EValIdx Abs.Type FnCall IndexOp
     | ELen Abs.Type Expr Abs.Ident
   deriving (C.Eq, C.Ord, C.Show, C.Read)
 

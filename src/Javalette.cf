@@ -138,8 +138,6 @@ ENewArr.   Expr6 ::= "new" Type IndexOp ;
 
 EIndexed.  Expr6 ::= Indexed ;
 
-EValIdx.   Expr6 ::= FnCall IndexOp ;
-
 ELen.      Expr5 ::= Expr6 "." Ident ;
 
 For.       Stmt ::= "for" "(" Type Ident ":" Expr ")" Stmt ;

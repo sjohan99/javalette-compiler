@@ -61,7 +61,6 @@ data Expr
     | EOr Expr Expr
     | ENewArr Type IndexOp
     | EIndexed Indexed
-    | EValIdx FnCall IndexOp
     | ELen Expr Ident
   deriving (C.Eq, C.Ord, C.Show, C.Read)
 

@@ -309,14 +309,6 @@ inferExp = \case
                 return (t', A.EIndexed t $ A.Indexed e' idxOp')
             _ -> throwError $ fmt ["Type mismatch:", pt l, ". Expected array, got", pt t]
 
-    EValIdx fc@(FnCall id es) idxOp -> do
-        (t, fc') <- checkFnCall fc
-        case t of
-            Arr t' -> do
-                idxOp' <- checkIndexOp idxOp
-                return (t', A.EValIdx t' fc' idxOp')
-            t' -> throwError $ fmt ["Type mismatch:", pt fc, ". Expected array, got", pt t]
-
     expr@(ELen e i@(Ident id)) -> do
         (t, e') <- inferExp e
         unless (id == "length") $ throwError $ fmt ["Illegal dot notation:", pt expr, "Type", pt t, "does not have a field", pt id]

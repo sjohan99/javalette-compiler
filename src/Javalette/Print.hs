@@ -226,7 +226,6 @@ instance Print Javalette.Abs.Expr where
     Javalette.Abs.EOr expr1 expr2 -> prPrec i 0 (concatD [prt 1 expr1, doc (showString "||"), prt 0 expr2])
     Javalette.Abs.ENewArr type_ indexop -> prPrec i 6 (concatD [doc (showString "new"), prt 0 type_, prt 0 indexop])
     Javalette.Abs.EIndexed indexed -> prPrec i 6 (concatD [prt 0 indexed])
-    Javalette.Abs.EValIdx fncall indexop -> prPrec i 6 (concatD [prt 0 fncall, prt 0 indexop])
     Javalette.Abs.ELen expr id_ -> prPrec i 5 (concatD [prt 6 expr, doc (showString "."), prt 0 id_])
 
 instance Print Javalette.Abs.FnCall where
