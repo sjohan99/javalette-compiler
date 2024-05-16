@@ -69,6 +69,9 @@ arrayValueType t = t
 arrayElementType :: Type -> Type
 arrayElementType (Abs.Arr t) = t
 
+arrayGetElemFun :: Type -> String
+arrayGetElemFun t = "@getElem." ++ toLLVM (arrayValueType t) ++ "." ++ show (arrayDepth t)
+
 instance ToLLVM Abs.AddOp where
   toLLVM Abs.Plus = "add"
   toLLVM Abs.Minus = "sub"
@@ -134,6 +137,9 @@ data Code
   | NewArray Type -- ^ Create LLVM structs for array of given type
   | Calloc Reg Reg Reg -- ^ Allocate memory with pointer to it in r1, r2 is # of object, r3 is size of each object.
   | SizeOf Reg Reg Type
+  | CreateGetElemFun Type
+  | CallGetElem Type Reg Reg Reg -- ^ r1 = getElem(r2, r3)
+  | GetElementPointer Type Reg Reg Reg -- ^ r1 = getelementptr r2, r3
   | Unreachable -- ^ Unreachable instruction.
   | FunHeader Ident Type [Abs.Arg] -- ^ Define function i.e "define rtype @id(args...) {"
   | FunFooter -- ^ End of function: "}"
@@ -179,6 +185,18 @@ instance ToLLVM Code where
     toLLVM p ++ " = getelementptr " ++ toLLVM t ++ ", " ++ toLLVM t ++ "* null, i32 1",
     toLLVM s ++ " = ptrtoint " ++ toLLVM t ++ "* " ++ toLLVM p ++ " to i32"
     ]
+
+  toLLVM (CreateGetElemFun t) = unlines $ map concat [
+      ["define ", toLLVM (arrayElementType t), " ", arrayGetElemFun t, "(", arrayPointer t, " %a, ", "i32 %i", ")", " {"]
+    , ["%p1 = getelementptr ", arrayName t, ", ", arrayPointer t, " %a, i32 0, i32 1, i32 %i"]
+    , ["%p2 = load ", toLLVM (arrayElementType t), ", ", toLLVM (arrayElementType t), "* %p1"]
+    , ["ret ", toLLVM (arrayElementType t), " %p2"]
+    , ["}"]
+    ]
+
+  toLLVM (GetElementPointer t r1 r2 r3) = toLLVM r1 ++ " = getelementptr " ++ arrayName t ++ ", " ++ arrayPointer t ++ " " ++ toLLVM r2 ++ ", i32 0, i32 1, i32 " ++ toLLVM r3
+
+  toLLVM (CallGetElem t r1 r2 r3) = toLLVM r1 ++ " = call " ++ toLLVM (arrayElementType t) ++ " " ++ arrayGetElemFun t ++ "(" ++ arrayPointer t ++ " " ++ toLLVM r2 ++ ", " ++ "i32 " ++ toLLVM r3 ++  ")"
 
   toLLVM (Return t r) = "ret " ++ toLLVM t ++ " " ++ toLLVM r
   toLLVM ReturnVoid = "ret void"

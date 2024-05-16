@@ -173,6 +173,14 @@ compileStmt = \case
       r2 <- lookupRegister id
       emit $ Store t r1 r2
 
+    AssArr t@(Abs.Arr t') (Indexed eArr (IndexOp eIdx)) eVal -> do
+      rArr <- compileExpr eArr
+      rIdx <- compileExpr eIdx
+      rVal <- compileExpr eVal
+      rPtr <- newRegister
+      emit $ GetElementPointer t rPtr rArr rIdx
+      emit $ Store t' rVal rPtr
+
     s@(Incr _ _) -> compileIncDec s
 
     s@(Decr _ _) -> compileIncDec s
@@ -335,9 +343,17 @@ compileExpr = \case
     compileNewArrayTypes t idxOps
     allocateNewArray t (head idxOps) -- fix this for multiple dimensions
 
+  EIndexed t (Indexed eArr (IndexOp eIdx)) -> do
+    rArr <- compileExpr eArr
+    rIdx <- compileExpr eIdx
+    rResult <- newRegister
+    emit $ CallGetElem t rResult rArr rIdx
+    return rResult
+
 compileNewArrayTypes :: Type -> [IndexOp] -> Compile ()
 compileNewArrayTypes t@(Abs.Arr t') (i:is) = do
   emit $ NewArray t
+  emit $ CreateGetElemFun t
   compileNewArrayTypes t' is
 
 compileNewArrayTypes _ [] = return ()
@@ -429,6 +445,9 @@ emit (StringConst sid s) = do
 
 emit na@(NewArray t) = do
   modify $ \st@St{ arrayStructs = as } -> st{ arrayStructs = Set.insert na as }
+
+emit fun@(CreateGetElemFun t) = do
+  modify $ \st@St{ arrayStructs = as } -> st{ arrayStructs = Set.insert fun as }
 
 emit c = do
   modify $ \st@St{ output = cs } -> st{ output = c:cs }
