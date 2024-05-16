@@ -8,8 +8,10 @@ module LLVM.Compiler (
 import           Control.Monad.State
 import           Data.Maybe
 import           Data.Map (Map)
-import           Data.List (isPrefixOf)
+import           Data.List (isPrefixOf, intercalate)
 import qualified Data.Map as Map
+import qualified Data.Set as Set
+import           Data.Set (Set)
 import           Annotated
 import           FunType
 import qualified Javalette.Abs as Abs
@@ -29,6 +31,7 @@ data St = St
   , sig :: Sig
   , stringConsts :: [Code]
   , nextString :: StrConst
+  , arrayStructs :: Set Code
   }
 
 initSt :: Sig -> St
@@ -40,6 +43,7 @@ initSt s = St {
   , sig = s
   , stringConsts = []
   , nextString = S 0
+  , arrayStructs = Set.empty
   }
 
 type Compile = State St
@@ -60,6 +64,7 @@ externals = [
   , "declare void @printString(i8*)"
   , "declare i32 @readInt()"
   , "declare double @readDouble()"
+  , "declare i8* @calloc(i32, i32)"
   ]
 
 -- | Entry point.
@@ -67,12 +72,13 @@ compile
   :: Prog -- ^ Type-annotated program.
   -> String  -- ^ Generated llvm source file content.
 compile (Program defs) =
-  unlines externals ++ unlines (strings ++ code)
+  unlines externals ++ unlines (strings ++ arrayTypes ++ code)
   where
   sig0 = Map.fromList $ builtin ++ map sigEntry defs
   sigEntry def@(FnDef _ id _ _) = (id, Fun id (funType def))
   st = execState (mapM_ compileFun defs) $ initSt sig0
   strings = map toLLVM (stringConsts st)
+  arrayTypes = map toLLVM (Set.toList $ arrayStructs st)
   code = map (indent . toLLVM) $ clean $ output st
 
 -- | Indent non-empty lines.
@@ -82,7 +88,7 @@ indent s
   | "lab" `isPrefixOf` s && last s == ':' = "\t" ++ s
   | "}" `isPrefixOf` s = s
   | "define" `isPrefixOf` s = s
-  | otherwise = "\t" ++ s
+  | otherwise = intercalate "\n" $ map ("\t\t" ++) $ lines s
 
 cleanEmptyLabels :: [Code] -> [Code]
 cleanEmptyLabels [] = []
@@ -133,6 +139,7 @@ compileItem t = \case
   Init id e -> do
     r2 <- compileExpr e
     r1 <- newVar id t
+    -- error $ show (toLLVM t)
     emit $ Store t r2 r1
 
 compileIncDec :: Stmt -> Compile ()
@@ -169,7 +176,7 @@ compileStmt = \case
     s@(Incr _ _) -> compileIncDec s
 
     s@(Decr _ _) -> compileIncDec s
-      
+
     CondElse e s1 s2 -> do
       bool <- compileExpr e
       trueLabel  <- newLabel
@@ -324,6 +331,32 @@ compileExpr = \case
     emit $ Load t r4 r1
     return r4
 
+  ENewArr t idxOps -> do
+    compileNewArrayTypes t idxOps
+    allocateNewArray t (head idxOps) -- fix this for multiple dimensions
+
+compileNewArrayTypes :: Type -> [IndexOp] -> Compile ()
+compileNewArrayTypes t@(Abs.Arr t') (i:is) = do
+  emit $ NewArray t
+  compileNewArrayTypes t' is
+
+compileNewArrayTypes _ [] = return ()
+
+sizeOf :: Type -> Compile Reg
+sizeOf t = do
+  p <- newRegister
+  s <- newRegister
+  emit $ SizeOf p s t
+  return s
+
+allocateNewArray :: Type -> IndexOp -> Compile Reg
+allocateNewArray t (IndexOp e) = do
+  n <- compileExpr e
+  s <- sizeOf t
+  p <- newRegister
+  emit $ Calloc p n s
+  return p
+
 compileLiteral :: Expr -> Type -> Compile Reg
 compileLiteral e t = do
   r1 <- newRegister
@@ -367,7 +400,9 @@ newVar :: Ident -> Type -> Compile Reg
 newVar x t = do
   r <- newRegister
   emit $ Alloca r t
-  emit $ Initialize r t
+  case t of
+    Abs.Arr _ -> return ()
+    _ -> emit $ Initialize r t
   modify $ \st@St{ cxt = (b:bs) } -> st { cxt = ((x,(r, t)) : b) : bs }
   return r
 
@@ -391,6 +426,9 @@ resetLocalState = do
 emit :: Code -> Compile ()
 emit (StringConst sid s) = do
   modify $ \st@St{ stringConsts = scs } -> st{ stringConsts = StringConst sid s : scs }
+
+emit na@(NewArray t) = do
+  modify $ \st@St{ arrayStructs = as } -> st{ arrayStructs = Set.insert na as }
 
 emit c = do
   modify $ \st@St{ output = cs } -> st{ output = c:cs }

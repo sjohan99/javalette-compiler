@@ -11,11 +11,14 @@ import qualified Javalette.Abs as Abs
 import           FunType
 
 newtype Label = L Int
+  deriving (Eq, Ord)
 newtype Reg = R Int
+  deriving (Eq, Ord)
 newtype StrConst = S Int
+  deriving (Eq, Ord)
 
 data Fun = Fun Ident FunType
-  deriving (Show)
+  deriving (Show, Eq, Ord)
 
 class ToLLVM a where
   toLLVM :: a -> String
@@ -47,6 +50,24 @@ instance ToLLVM Type where
   toLLVM Abs.Bool = "i1"
   toLLVM Abs.Void = "void"
   toLLVM Abs.Str  = "i8*"
+  toLLVM t@(Abs.Arr t') = arrayPointer t
+
+arrayName :: Type -> String
+arrayName t = "%arr.struct." ++ toLLVM (arrayValueType t) ++ "." ++ show (arrayDepth t) 
+
+arrayPointer :: Type -> String
+arrayPointer t = "%arr.ptr." ++ toLLVM (arrayValueType t) ++ "." ++ show (arrayDepth t) 
+
+arrayDepth :: Type -> Int
+arrayDepth (Abs.Arr t) = 1 + arrayDepth t
+arrayDepth _ = 0
+
+arrayValueType :: Type -> Type
+arrayValueType (Abs.Arr t) = arrayValueType t
+arrayValueType t = t
+
+arrayElementType :: Type -> Type
+arrayElementType (Abs.Arr t) = t
 
 instance ToLLVM Abs.AddOp where
   toLLVM Abs.Plus = "add"
@@ -110,6 +131,9 @@ data Code
   | ReturnVoid -- ^ Return void.
   | Initialize Reg Type -- ^ Initialize register with default value.
   | LogicalNot Type Reg Reg -- ^ Invert boolean value in 2nd register with result in 1st register.
+  | NewArray Type -- ^ Create LLVM structs for array of given type
+  | Calloc Reg Reg Reg -- ^ Allocate memory with pointer to it in r1, r2 is # of object, r3 is size of each object.
+  | SizeOf Reg Reg Type
   | Unreachable -- ^ Unreachable instruction.
   | FunHeader Ident Type [Abs.Arg] -- ^ Define function i.e "define rtype @id(args...) {"
   | FunFooter -- ^ End of function: "}"
@@ -117,6 +141,7 @@ data Code
   | StringConst StrConst String -- ^ Define a string constant.
   | LoadStr Reg StrConst String -- ^ Load string constant into register.
   | Blank -- ^ Blank line.
+  deriving (Eq, Ord)
 
 instance ToLLVM Code where
   toLLVM (Load t r1 r2) = toLLVM r1 ++ " = load " ++ toLLVM t ++ ", " ++ toLLVM t ++ "* " ++ toLLVM r2
@@ -143,6 +168,18 @@ instance ToLLVM Code where
             args = intercalate ", " [toLLVM t ++ " " ++ toLLVM r | (t, r) <- zip ts rs]
             prefix = if t == Abs.Void then "" else toLLVM r ++ " = "
   toLLVM (LogicalNot t r1 r2) = toLLVM r1 ++ " = xor " ++ toLLVM t ++ " " ++ toLLVM r2 ++ ", 1"
+
+  toLLVM (NewArray t) = unlines [structName ++ " = type {i32, [0 x " ++ toLLVM (arrayElementType t) ++ "]}", structPtr ++ " = type " ++ structName ++ "*"]
+    where structName = arrayName t
+          structPtr  = arrayPointer t
+
+  toLLVM (Calloc r n s) = toLLVM r ++ " = call i8* @calloc(i32 " ++ toLLVM n ++ ", i32 " ++ toLLVM s ++ ")"
+
+  toLLVM (SizeOf p s t) = unlines [
+    toLLVM p ++ " = getelementptr " ++ toLLVM t ++ ", " ++ toLLVM t ++ "* null, i32 1",
+    toLLVM s ++ " = ptrtoint " ++ toLLVM t ++ "* " ++ toLLVM p ++ " to i32"
+    ]
+
   toLLVM (Return t r) = "ret " ++ toLLVM t ++ " " ++ toLLVM r
   toLLVM ReturnVoid = "ret void"
   toLLVM Unreachable = "unreachable"
@@ -154,6 +191,15 @@ instance ToLLVM Code where
   toLLVM FunFooter = "}"
   toLLVM (Comment s) = "; " ++ s
   toLLVM Blank = ""
+
+-- sizeOf :: Type -> Int
+-- sizeOf Abs.Int  = 4
+-- sizeOf Abs.Doub = 8
+-- sizeOf Abs.Bool = 1
+-- sizeOf (Abs.Arr t) = sizeOf $ arrayValueType t
+
+arrayStructName :: Type -> String
+arrayStructName t = "%arr.struct." ++ toLLVM t
 
 initialValue :: Type -> String
 initialValue Abs.Int  = "0"
