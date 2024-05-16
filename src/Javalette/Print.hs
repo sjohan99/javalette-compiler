@@ -223,7 +223,7 @@ instance Print Javalette.Abs.Expr where
     Javalette.Abs.ERel expr1 relop expr2 -> prPrec i 2 (concatD [prt 2 expr1, prt 0 relop, prt 3 expr2])
     Javalette.Abs.EAnd expr1 expr2 -> prPrec i 1 (concatD [prt 2 expr1, doc (showString "&&"), prt 1 expr2])
     Javalette.Abs.EOr expr1 expr2 -> prPrec i 0 (concatD [prt 1 expr1, doc (showString "||"), prt 0 expr2])
-    Javalette.Abs.ENewArr type_ indexop -> prPrec i 6 (concatD [doc (showString "new"), prt 0 type_, prt 0 indexop])
+    Javalette.Abs.ENewArr type_ indexops -> prPrec i 6 (concatD [doc (showString "new"), prt 0 type_, prt 0 indexops])
     Javalette.Abs.EIndexed indexed -> prPrec i 6 (concatD [prt 0 indexed])
     Javalette.Abs.ELen expr id_ -> prPrec i 5 (concatD [prt 6 expr, doc (showString "."), prt 0 id_])
 
@@ -259,3 +259,8 @@ instance Print Javalette.Abs.Indexed where
 instance Print Javalette.Abs.IndexOp where
   prt i = \case
     Javalette.Abs.IndexOp expr -> prPrec i 0 (concatD [doc (showString "["), prt 0 expr, doc (showString "]")])
+
+instance Print [Javalette.Abs.IndexOp] where
+  prt _ [] = concatD []
+  prt _ [x] = concatD [prt 0 x]
+  prt _ (x:xs) = concatD [prt 0 x, prt 0 xs]

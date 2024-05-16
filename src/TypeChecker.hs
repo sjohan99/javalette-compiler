@@ -290,10 +290,10 @@ inferExp = \case
             (Bool, Bool) -> return (Bool, A.EOr Bool e1' e2')
             _                    -> throwError $ fmt ["Type mismatch:", pt e1, "||", pt e2, ". Cannot apply || to", pt t1, "and", pt t2]
 
-    ENewArr t (IndexOp e) -> do
-        (t', e') <- inferExp e
-        unless (t' == Int) $ throwError $ fmt ["Type mismatch:", pt e, ". Expected integer, got", pt t']
-        return (Arr t, A.ENewArr t (A.IndexOp e'))
+    ENewArr t idxOps -> do
+        idxOps' <- mapM checkIndexOp idxOps
+        return (t', A.ENewArr t' idxOps')
+        where t' = nestedArrOfDepth t (length idxOps)
 
     EIndexed l@(Indexed e idxOp) -> do
         (t, e') <- inferExp e
@@ -316,11 +316,6 @@ checkIndexOp (IndexOp e) = do
     unless (t == Int) $ throwError $ fmt ["Type mismatch:", pt e, ". Expected integer, got", pt t]
     return $ A.IndexOp e'
 
-checkTypeIsArr :: Type -> Check Type
-checkTypeIsArr t = case t of
-    Arr t' -> return t'
-    _ -> throwError $ fmt ["Type mismatch. Expected array, got", pt t]
-
 checkExpr :: Expr -> Type -> Check A.Expr
 checkExpr e t = do
     (t', e') <- inferExp e
@@ -342,3 +337,7 @@ newVar x t = case t of
         let (found, b') = Map.insertLookupWithKey (\ _ t _ -> t) x t b
         unless (isNothing found) $ throwError $ "variable already defined: " ++ pt x
         put $ St (b' :| bs) sret
+
+nestedArrOfDepth :: Type -> Int -> Type
+nestedArrOfDepth t 0 = t
+nestedArrOfDepth t n = Arr (nestedArrOfDepth t (n - 1))

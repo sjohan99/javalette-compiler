@@ -42,7 +42,7 @@ data Expr
     | ERel Abs.Type Expr Abs.RelOp Expr
     | EAnd Abs.Type Expr Expr
     | EOr Abs.Type Expr Expr
-    | ENewArr Abs.Type IndexOp
+    | ENewArr Abs.Type [IndexOp]
     | EIndexed Abs.Type Indexed
     | ELen Abs.Type Expr Abs.Ident
   deriving (C.Eq, C.Ord, C.Show, C.Read)

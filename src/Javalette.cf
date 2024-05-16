@@ -130,7 +130,9 @@ Arr.       Type ::= Type "[]" ;
 
 AssArr.    Stmt ::= Indexed "=" Expr  ";" ;
 
-ENewArr.   Expr6 ::= "new" Type IndexOp ;
+ENewArr.   Expr6 ::= "new" Type [IndexOp] ;
+
+separator nonempty IndexOp "" ;
 
 EIndexed.  Expr6 ::= Indexed ;
 
