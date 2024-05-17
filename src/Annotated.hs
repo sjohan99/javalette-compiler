@@ -24,7 +24,7 @@ data Stmt
     | While Expr Stmt
     | SExp Abs.Type Expr
     | AssArr Abs.Type Indexed Expr
-    | For Abs.Type Abs.Ident Expr Stmt
+    | For Abs.Type Abs.Ident Expr Abs.Type Stmt
   deriving (C.Eq, C.Ord, C.Show, C.Read)
 
 data Expr
@@ -44,7 +44,7 @@ data Expr
     | EOr Abs.Type Expr Expr
     | ENewArr Abs.Type [IndexOp]
     | EIndexed Abs.Type Indexed
-    | ELen Abs.Type Expr Abs.Ident
+    | ELen Abs.Type Abs.Type Expr Abs.Ident
   deriving (C.Eq, C.Ord, C.Show, C.Read)
 
 data Item = NoInit Abs.Ident | Init Abs.Ident Expr

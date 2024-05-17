@@ -137,9 +137,11 @@ data Code
   | NewArray Type -- ^ Create LLVM structs for array of given type
   | Calloc Reg Reg Reg -- ^ Allocate memory with pointer to it in r1, r2 is # of object, r3 is size of each object.
   | SizeOf Reg Reg Type
+  | Len Type Reg Reg Reg
   | CreateGetElemFun Type
   | CallGetElem Type Reg Reg Reg -- ^ r1 = getElem(r2, r3)
-  | GetElementPointer Type Reg Reg Reg -- ^ r1 = getelementptr r2, r3
+  | GetArrElementPointer Type Reg Reg Reg -- ^ r1 = getelementptr r2, r3
+  | GetArrSizePointer Type Reg Reg -- ^ r1 = getelementptr r2
   | Unreachable -- ^ Unreachable instruction.
   | FunHeader Ident Type [Abs.Arg] -- ^ Define function i.e "define rtype @id(args...) {"
   | FunFooter -- ^ End of function: "}"
@@ -179,11 +181,16 @@ instance ToLLVM Code where
     where structName = arrayName t
           structPtr  = arrayPointer t
 
-  toLLVM (Calloc r n s) = toLLVM r ++ " = call i8* @calloc(i32 " ++ toLLVM n ++ ", i32 " ++ toLLVM s ++ ")"
+  toLLVM (Calloc r n s) = toLLVM r ++ " = call i32* @calloc(i32 " ++ toLLVM n ++ ", i32 " ++ toLLVM s ++ ")"
 
   toLLVM (SizeOf p s t) = unlines [
     toLLVM p ++ " = getelementptr " ++ toLLVM t ++ ", " ++ toLLVM t ++ "* null, i32 1",
     toLLVM s ++ " = ptrtoint " ++ toLLVM t ++ "* " ++ toLLVM p ++ " to i32"
+    ]
+
+  toLLVM (Len t r1 r2 r3) = unlines $ map concat [
+      [toLLVM r2, " = getelementptr ", arrayName t, ", ", arrayPointer t, " ", toLLVM r1, ", i32 0, i32 0"]
+    , [toLLVM r3, " = load i32, i32* ", toLLVM r2]
     ]
 
   toLLVM (CreateGetElemFun t) = unlines $ map concat [
@@ -194,7 +201,9 @@ instance ToLLVM Code where
     , ["}"]
     ]
 
-  toLLVM (GetElementPointer t r1 r2 r3) = toLLVM r1 ++ " = getelementptr " ++ arrayName t ++ ", " ++ arrayPointer t ++ " " ++ toLLVM r2 ++ ", i32 0, i32 1, i32 " ++ toLLVM r3
+  toLLVM (GetArrElementPointer t r1 r2 r3) = toLLVM r1 ++ " = getelementptr " ++ arrayName t ++ ", " ++ arrayPointer t ++ " " ++ toLLVM r2 ++ ", i32 0, i32 1, i32 " ++ toLLVM r3
+
+  toLLVM (GetArrSizePointer t r1 r2) = toLLVM r1 ++ " = getelementptr " ++ arrayName t ++ ", " ++ arrayPointer t ++ " " ++ toLLVM r2 ++ ", i32 0, i32 0"
 
   toLLVM (CallGetElem t r1 r2 r3) = toLLVM r1 ++ " = call " ++ toLLVM (arrayElementType t) ++ " " ++ arrayGetElemFun t ++ "(" ++ arrayPointer t ++ " " ++ toLLVM r2 ++ ", " ++ "i32 " ++ toLLVM r3 ++  ")"
 
@@ -209,12 +218,6 @@ instance ToLLVM Code where
   toLLVM FunFooter = "}"
   toLLVM (Comment s) = "; " ++ s
   toLLVM Blank = ""
-
--- sizeOf :: Type -> Int
--- sizeOf Abs.Int  = 4
--- sizeOf Abs.Doub = 8
--- sizeOf Abs.Bool = 1
--- sizeOf (Abs.Arr t) = sizeOf $ arrayValueType t
 
 arrayStructName :: Type -> String
 arrayStructName t = "%arr.struct." ++ toLLVM t

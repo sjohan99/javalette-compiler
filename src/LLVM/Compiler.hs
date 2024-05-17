@@ -64,7 +64,7 @@ externals = [
   , "declare void @printString(i8*)"
   , "declare i32 @readInt()"
   , "declare double @readDouble()"
-  , "declare i8* @calloc(i32, i32)"
+  , "declare i32* @calloc(i32, i32)"
   ]
 
 -- | Entry point.
@@ -178,7 +178,7 @@ compileStmt = \case
       rIdx <- compileExpr eIdx
       rVal <- compileExpr eVal
       rPtr <- newRegister
-      emit $ GetElementPointer t rPtr rArr rIdx
+      emit $ GetArrElementPointer t rPtr rArr rIdx
       emit $ Store t' rVal rPtr
 
     s@(Incr _ _) -> compileIncDec s
@@ -222,12 +222,59 @@ compileStmt = \case
       emit $ Br checkCondLabel
       emit $ Label exitLabel
 
+    For elemType id e arrType s -> do
+      checkLoop <- newLabel
+      loop <- newLabel
+      doneLabel <- newLabel
+      rTmp <- newRegister
+
+      -- get array
+      rArr <- compileExpr e
+
+      -- get array size
+      rArrSize <- newRegister
+      emit $ Len arrType rArr rTmp rArrSize
+
+      -- set idx to 0
+      rIdxStore <- newRegister
+      emit $ Alloca rIdxStore Abs.Int
+      emit $ StoreInt 0 rIdxStore
+
+      -- check if loop is done 
+      emit $ Br checkLoop
+      emit $ Label checkLoop
+      rIdxVal <- newRegister
+      emit $ Load Abs.Int rIdxVal rIdxStore
+      rIdxEQUSize <- newRegister
+      emit $ Rel rIdxEQUSize Abs.Int rIdxVal Abs.GE rArrSize
+      emit $ BrCond rIdxEQUSize doneLabel loop
+      
+      -- execute loop statement
+      emit $ Label loop
+      rElem <- newRegister
+      emit $ CallGetElem arrType rElem rArr rIdxVal
+      inNewBlock $ compileForStmt s id elemType rElem
+      
+      -- increment idx
+      rNewIdxVal <- newRegister
+      emit $ Inc Abs.Int rNewIdxVal rIdxVal
+      emit $ Store Abs.Int rNewIdxVal rIdxStore
+      emit $ Br checkLoop
+
+      emit $ Label doneLabel
+
     BStmt ss -> do
       inNewBlock $ mapM_ compileStmt ss
 
     SExp t e -> do
       compileExpr e
       return ()
+
+compileForStmt :: Stmt -> Ident -> Type -> Reg -> Compile ()
+compileForStmt s id t rElem = do
+  r <- newVar id t
+  emit $ Store t rElem r
+  compileStmt s
 
 compileExpr :: Expr -> Compile Reg
 compileExpr = \case
@@ -341,7 +388,8 @@ compileExpr = \case
 
   ENewArr t idxOps -> do
     compileNewArrayTypes t idxOps
-    allocateNewArray t (head idxOps) -- fix this for multiple dimensions
+    regs <- mapM allocateNewArray (p t idxOps)
+    return $ head regs
 
   EIndexed t (Indexed eArr (IndexOp eIdx)) -> do
     rArr <- compileExpr eArr
@@ -349,6 +397,17 @@ compileExpr = \case
     rResult <- newRegister
     emit $ CallGetElem t rResult rArr rIdx
     return rResult
+
+  ELen _et arrType e _ -> do
+    rArr <- compileExpr e
+    rTmp <- newRegister
+    rLen <- newRegister
+    emit $ Len arrType rArr rTmp rLen
+    return rLen
+
+p :: Type -> [IndexOp] -> [(Type, IndexOp)]
+p t@(Abs.Arr t') (i:is) = (t, i) : p t' is
+p _ _ = []
 
 compileNewArrayTypes :: Type -> [IndexOp] -> Compile ()
 compileNewArrayTypes t@(Abs.Arr t') (i:is) = do
@@ -365,12 +424,19 @@ sizeOf t = do
   emit $ SizeOf p s t
   return s
 
-allocateNewArray :: Type -> IndexOp -> Compile Reg
-allocateNewArray t (IndexOp e) = do
+allocateNewArray :: (Type, IndexOp) -> Compile Reg
+allocateNewArray (t, IndexOp e) = do
+  -- allocate memory
   n <- compileExpr e
   s <- sizeOf t
   p <- newRegister
   emit $ Calloc p n s
+
+  -- set array size value
+  sizePtr <- newRegister
+  emit $ GetArrSizePointer t sizePtr p
+  emit $ Store Abs.Int n sizePtr
+
   return p
 
 compileLiteral :: Expr -> Type -> Compile Reg

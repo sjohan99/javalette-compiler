@@ -203,7 +203,7 @@ checkStmt = \case
                 newVar id t'
                 s' <- checkStmt  s
                 put $ St bs sret
-                return $ A.For t id e' s'
+                return $ A.For t id e' iterableType s'
             _ -> throwError $ fmt ["Type mismatch:", pt e, ". Expected array, got", pt iterableType]
 
     where blockify (BStmt ss) = BStmt ss
@@ -307,7 +307,7 @@ inferExp = \case
         (t, e') <- inferExp e
         unless (id == "length") $ throwError $ fmt ["Illegal dot notation:", pt expr, "Type", pt t, "does not have a field", pt id]
         case t of
-            Arr _ -> return (Int, A.ELen Int e' i)
+            Arr _ -> return (Int, A.ELen Int t e' i)
             _ -> throwError $ fmt ["Type mismatch:", pt expr, ". Expected array, got", pt t]
 
 checkIndexOp :: IndexOp -> Check A.IndexOp
