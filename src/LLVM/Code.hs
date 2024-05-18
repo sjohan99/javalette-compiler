@@ -136,12 +136,12 @@ data Code
   | LogicalNot Type Reg Reg -- ^ Invert boolean value in 2nd register with result in 1st register.
   | NewArray Type -- ^ Create LLVM structs for array of given type
   | Calloc Reg Reg Reg -- ^ Allocate memory with pointer to it in r1, r2 is # of object, r3 is size of each object.
-  | SizeOf Reg Reg Type
-  | Len Type Reg Reg Reg
-  | CreateGetElemFun Type
-  | CallGetElem Type Reg Reg Reg -- ^ r1 = getElem(r2, r3)
-  | GetArrElementPointer Type Reg Reg Reg -- ^ r1 = getelementptr r2, r3
-  | GetArrSizePointer Type Reg Reg -- ^ r1 = getelementptr r2
+  | SizeOf Reg Reg Type -- ^ Store size of type in r2, r1 is a temporary register.
+  | Len Type Reg Reg Reg -- ^ r1 is array pointer, r2 is a temporary register, length is stored in r3
+  | CreateGetElemFun Type -- ^ Create function for getting element from array of the given type.
+  | CallGetElem Type Reg Reg Reg -- ^ element at index r3 of array in r2 is stored in r1
+  | GetArrElementPointer Type Reg Reg Reg -- ^ pointer to index r3 of array in r2 is stored in r1
+  | GetArrSizePointer Type Reg Reg -- ^ pointer to size of array in r2 is stored in r1
   | Unreachable -- ^ Unreachable instruction.
   | FunHeader Ident Type [Abs.Arg] -- ^ Define function i.e "define rtype @id(args...) {"
   | FunFooter -- ^ End of function: "}"
@@ -181,7 +181,7 @@ instance ToLLVM Code where
     where structName = arrayName t
           structPtr  = arrayPointer t
 
-  toLLVM (Calloc r n s) = toLLVM r ++ " = call i32* @calloc(i32 " ++ toLLVM n ++ ", i32 " ++ toLLVM s ++ ")"
+  toLLVM (Calloc r n s) = toLLVM r ++ " = call i8* @calloc(i32 " ++ toLLVM n ++ ", i32 " ++ toLLVM s ++ ")"
 
   toLLVM (SizeOf p s t) = unlines [
     toLLVM p ++ " = getelementptr " ++ toLLVM t ++ ", " ++ toLLVM t ++ "* null, i32 1",
@@ -203,7 +203,7 @@ instance ToLLVM Code where
 
   toLLVM (GetArrElementPointer t r1 r2 r3) = toLLVM r1 ++ " = getelementptr " ++ arrayName t ++ ", " ++ arrayPointer t ++ " " ++ toLLVM r2 ++ ", i32 0, i32 1, i32 " ++ toLLVM r3
 
-  toLLVM (GetArrSizePointer t r1 r2) = toLLVM r1 ++ " = getelementptr " ++ arrayName t ++ ", " ++ arrayPointer t ++ " " ++ toLLVM r2 ++ ", i32 0, i32 0"
+  toLLVM (GetArrSizePointer t rArr rSizePtr) = toLLVM rSizePtr ++ " = getelementptr " ++ arrayName t ++ ", " ++ arrayPointer t ++ " " ++ toLLVM rArr ++ ", i32 0, i32 0"
 
   toLLVM (CallGetElem t r1 r2 r3) = toLLVM r1 ++ " = call " ++ toLLVM (arrayElementType t) ++ " " ++ arrayGetElemFun t ++ "(" ++ arrayPointer t ++ " " ++ toLLVM r2 ++ ", " ++ "i32 " ++ toLLVM r3 ++  ")"
 

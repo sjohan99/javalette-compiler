@@ -290,8 +290,9 @@ inferExp = \case
             (Bool, Bool) -> return (Bool, A.EOr Bool e1' e2')
             _                    -> throwError $ fmt ["Type mismatch:", pt e1, "||", pt e2, ". Cannot apply || to", pt t1, "and", pt t2]
 
-    ENewArr t idxOps -> do
+    e@(ENewArr t idxOps) -> do
         idxOps' <- mapM checkIndexOp idxOps
+        unless (arrDims t' == length idxOps) $ throwError $ fmt ["Type error:", pt e, ". All array sizes were not given"]
         return (t', A.ENewArr t' idxOps')
         where t' = nestedArrOfDepth t (length idxOps)
 
@@ -341,3 +342,7 @@ newVar x t = case t of
 nestedArrOfDepth :: Type -> Int -> Type
 nestedArrOfDepth t 0 = t
 nestedArrOfDepth t n = Arr (nestedArrOfDepth t (n - 1))
+
+arrDims :: Type -> Int
+arrDims (Arr t) = 1 + arrDims t
+arrDims _ = 0

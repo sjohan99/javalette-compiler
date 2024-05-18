@@ -31,7 +31,7 @@ data St = St
   , sig :: Sig
   , stringConsts :: [Code]
   , nextString :: StrConst
-  , arrayStructs :: Set Code
+  , arrayDefinitions :: Set Code
   }
 
 initSt :: Sig -> St
@@ -43,7 +43,7 @@ initSt s = St {
   , sig = s
   , stringConsts = []
   , nextString = S 0
-  , arrayStructs = Set.empty
+  , arrayDefinitions = Set.empty
   }
 
 type Compile = State St
@@ -64,7 +64,7 @@ externals = [
   , "declare void @printString(i8*)"
   , "declare i32 @readInt()"
   , "declare double @readDouble()"
-  , "declare i32* @calloc(i32, i32)"
+  , "declare i8* @calloc(i32, i32)"
   ]
 
 -- | Entry point.
@@ -78,7 +78,7 @@ compile (Program defs) =
   sigEntry def@(FnDef _ id _ _) = (id, Fun id (funType def))
   st = execState (mapM_ compileFun defs) $ initSt sig0
   strings = map toLLVM (stringConsts st)
-  arrayTypes = map toLLVM (Set.toList $ arrayStructs st)
+  arrayTypes = map toLLVM (Set.toList $ arrayDefinitions st)
   code = map (indent . toLLVM) $ clean $ output st
 
 -- | Indent non-empty lines.
@@ -135,11 +135,12 @@ compileItem :: Type -> Item -> Compile ()
 compileItem t = \case
   NoInit id -> do
     r <- newVar id t
-    return ()
+    case t of
+      Abs.Arr _ -> compileUninitArray t r
+      _ -> return ()
   Init id e -> do
     r2 <- compileExpr e
     r1 <- newVar id t
-    -- error $ show (toLLVM t)
     emit $ Store t r2 r1
 
 compileIncDec :: Stmt -> Compile ()
@@ -154,7 +155,6 @@ compileIncDec s = do
     (t, id, op) = case s of
       Incr t id -> (t, id, Inc)
       Decr t id -> (t, id, Dec)
-      _ -> error "compileIncDec: not an increment or decrement"
 
 compileStmt :: Stmt -> Compile ()
 compileStmt = \case
@@ -388,8 +388,7 @@ compileExpr = \case
 
   ENewArr t idxOps -> do
     compileNewArrayTypes t idxOps
-    regs <- mapM allocateNewArray (p t idxOps)
-    return $ head regs
+    compileArray t idxOps
 
   EIndexed t (Indexed eArr (IndexOp eIdx)) -> do
     rArr <- compileExpr eArr
@@ -404,10 +403,6 @@ compileExpr = \case
     rLen <- newRegister
     emit $ Len arrType rArr rTmp rLen
     return rLen
-
-p :: Type -> [IndexOp] -> [(Type, IndexOp)]
-p t@(Abs.Arr t') (i:is) = (t, i) : p t' is
-p _ _ = []
 
 compileNewArrayTypes :: Type -> [IndexOp] -> Compile ()
 compileNewArrayTypes t@(Abs.Arr t') (i:is) = do
@@ -424,20 +419,72 @@ sizeOf t = do
   emit $ SizeOf p s t
   return s
 
-allocateNewArray :: (Type, IndexOp) -> Compile Reg
-allocateNewArray (t, IndexOp e) = do
+compileArray :: Type -> [IndexOp] -> Compile Reg
+compileArray pArrT idxOps = do
+  case (pArrT, idxOps) of
+    (Abs.Arr cArrT@(Abs.Arr _), idxOp:ios) -> do
+      (rArrPtr, rParentLen) <- allocateArray pArrT idxOp
+
+      checkLoop <- newLabel
+      loop <- newLabel
+      doneLabel <- newLabel
+      
+      -- set idx to 0
+      rIdxStore <- newRegister
+      emit $ Alloca rIdxStore Abs.Int
+      emit $ StoreInt 0 rIdxStore
+
+      -- check if loop is done
+      emit $ Br checkLoop
+      emit $ Label checkLoop
+      rIdxVal <- newRegister
+      emit $ Load Abs.Int rIdxVal rIdxStore
+      rIdxEQUSize <- newRegister
+      emit $ Rel rIdxEQUSize Abs.Int rIdxVal Abs.GE rParentLen
+      emit $ BrCond rIdxEQUSize doneLabel loop
+
+      -- compile sub-arrays
+      emit $ Label loop
+      rElemPtr <- newRegister
+      emit $ GetArrElementPointer pArrT rElemPtr rArrPtr rIdxVal
+      rSubArrPtr <- compileArray cArrT ios
+      emit $ Store cArrT rSubArrPtr rElemPtr
+      
+      -- increment idx
+      rNewIdxVal <- newRegister
+      emit $ Inc Abs.Int rNewIdxVal rIdxVal
+      emit $ Store Abs.Int rNewIdxVal rIdxStore
+      emit $ Br checkLoop
+
+      emit $ Label doneLabel
+
+      return rArrPtr
+    (_, idxOp:ios) -> do
+      (rArrPtr, rParentLen) <- allocateArray pArrT idxOp
+      return rArrPtr
+
+compileUninitArray :: Type -> Reg -> Compile ()
+compileUninitArray t rVarPtr = do
+  emit $ NewArray t
+  rArr <- compileArray t [IndexOp (ELitInt Abs.Int 0)]
+  emit $ Store t rArr rVarPtr
+
+allocateArray :: Type -> IndexOp -> Compile (Reg, Reg)
+allocateArray t (IndexOp e) = do
   -- allocate memory
   n <- compileExpr e
+  n' <- newRegister
+  emit $ Inc Abs.Int n' n
   s <- sizeOf t
   p <- newRegister
-  emit $ Calloc p n s
+  emit $ Calloc p n' s
 
   -- set array size value
   sizePtr <- newRegister
-  emit $ GetArrSizePointer t sizePtr p
+  emit $ GetArrSizePointer t p sizePtr
   emit $ Store Abs.Int n sizePtr
 
-  return p
+  return (p, n)
 
 compileLiteral :: Expr -> Type -> Compile Reg
 compileLiteral e t = do
@@ -510,10 +557,10 @@ emit (StringConst sid s) = do
   modify $ \st@St{ stringConsts = scs } -> st{ stringConsts = StringConst sid s : scs }
 
 emit na@(NewArray t) = do
-  modify $ \st@St{ arrayStructs = as } -> st{ arrayStructs = Set.insert na as }
+  modify $ \st@St{ arrayDefinitions = ads } -> st{ arrayDefinitions = Set.insert na ads }
 
 emit fun@(CreateGetElemFun t) = do
-  modify $ \st@St{ arrayStructs = as } -> st{ arrayStructs = Set.insert fun as }
+  modify $ \st@St{ arrayDefinitions = ads } -> st{ arrayDefinitions = Set.insert fun ads }
 
 emit c = do
   modify $ \st@St{ output = cs } -> st{ output = c:cs }
