@@ -33,10 +33,23 @@ See Javalette.cf file ([link](src/Javalette.cf)).
 
 ## Shift / Reduce conflicts
 
-There is only a single shift/reduce conflict which is the standard dangling else.
+There are two shift/reduce conflicts
+1. Just the standard dangling else.
 
 ```
 Cond.      Stmt ::= "if" "(" Expr ")" Stmt  ;
 
 CondElse.  Stmt ::= "if" "(" Expr ")" Stmt "else" Stmt  ;
+```
+
+2. When parsing eg `new int[2][3]` the `new int[2]` part could be reduced to an `Expr6` and then we'd get an `Indexed` instead of an `ENewArr`. This is not an issue since the parser always chooses the shift action, which produces the intended result.
+
+```
+Indexed.   Indexed ::= Expr6 IndexOp ;
+
+IndexOp.   IndexOp ::= "[" Expr "]" ;
+
+ENewArr.   Expr6 ::= "new" Type [IndexOp] ;
+
+separator nonempty IndexOp "" ;
 ```
