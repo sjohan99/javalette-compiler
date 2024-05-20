@@ -53,3 +53,8 @@ ENewArr.   Expr6 ::= "new" Type [IndexOp] ;
 
 separator nonempty IndexOp "" ;
 ```
+
+## Extensions
+The following extensions are implemented:
+- arrays1
+- arrays2
