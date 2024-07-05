@@ -17,9 +17,6 @@ The outcome is written to stderr and are the following:
 - ERROR: Type error: \<explanation\>. There an error during typechecking.
 - OK. If the program has no syntax or type error, the resulting LLVM IR will then be written to stdout.
 
-### Options
-There are no options as of now
-
 ### Building the lexer and parser from Javalette.cf
 
 To build completely from scratch, there are additional requirements:
@@ -54,7 +51,5 @@ ENewArr.   Expr6 ::= "new" Type [IndexOp] ;
 separator nonempty IndexOp "" ;
 ```
 
-## Extensions
-The following extensions are implemented:
-- arrays1
-- arrays2
+# Test-suite
+Test-suite for the compiler can be found at https://github.com/TDA283-compiler-construction/project/tree/master/tester
